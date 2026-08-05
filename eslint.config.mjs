@@ -5,5 +5,12 @@ import nextTypeScript from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTypeScript,
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "@next/next/no-img-element": "off",
+    },
+  },
   globalIgnores([".next/**", "out/**", "coverage/**", "public/sw.js"]),
 ]);

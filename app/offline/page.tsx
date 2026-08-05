@@ -1,4 +1,5 @@
 import { Bot, WifiOff } from "lucide-react";
+import Link from "next/link";
 
 export const metadata = { title: "Offline" };
 
@@ -10,7 +11,7 @@ export default function OfflinePage() {
         <WifiOff size={24} />
         <h1>HelloAI is offline</h1>
         <p>The installed app and previously stored conversations are available from the main screen. New AI responses require a network connection.</p>
-        <a className="primary-link" href="/">Open local chats</a>
+        <Link className="primary-link" href="/">Open local chats</Link>
       </div>
     </main>
   );

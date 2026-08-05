@@ -1,4 +1,5 @@
 import { ArrowLeft, HardDrive, Server, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 export const metadata = { title: "Privacy" };
 
@@ -6,7 +7,7 @@ export default function PrivacyPage() {
   return (
     <main className="static-page">
       <article className="privacy-card">
-        <a className="back-link" href="/"><ArrowLeft size={17} /> Back to HelloAI</a>
+        <Link className="back-link" href="/"><ArrowLeft size={17} /> Back to HelloAI</Link>
         <p className="eyebrow">Privacy model</p>
         <h1>Local-first by design</h1>
         <p className="lead">HelloAI has no account system and no application database. Conversations, images, drafts, and preferences are saved in browser-managed storage on this device.</p>
