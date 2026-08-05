@@ -1,0 +1,40 @@
+@media (max-width: 900px) {
+  .mobile-only { display: grid !important; }
+  .desktop-install { display: none; }
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: min(320px, 88vw); transform: translateX(-105%); transition: transform .2s ease; box-shadow: var(--shadow); }
+  .sidebar.sidebar-open { transform: translateX(0); }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(5,7,12,.5); }
+  .workspace-header { padding: 0 12px; }
+  .connection-pill { display: none; }
+  .model-select select { max-width: 145px; }
+}
+
+@media (max-width: 640px) {
+  .workspace-header { height: 58px; gap: 8px; }
+  .header-title span { display: none; }
+  .header-actions { gap: 5px; }
+  .header-actions .icon-button { width: 34px; height: 34px; }
+  .model-select select { width: 116px; max-width: 116px; font-size: .68rem; }
+  .messages { padding: 18px 15px 65px; }
+  .message-row { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 15px 0; }
+  .message-avatar { width: 28px; height: 28px; border-radius: 9px; }
+  .message-actions { opacity: 1; }
+  .message-actions button { padding-left: 4px; padding-right: 4px; }
+  .message-meta { width: 100%; margin: 3px 0 0; }
+  .empty-state { width: calc(100% - 28px); padding: 38px 0 80px; }
+  .suggestion-grid { grid-template-columns: 1fr; }
+  .composer-zone { padding: 0 9px max(9px, env(safe-area-inset-bottom)); }
+  .composer-card { border-radius: 15px; }
+  .composer-hint { display: none; }
+  .composer-disclaimer { font-size: .56rem; padding: 0 8px; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .field-wide { grid-column: auto; }
+  .dialog { padding: 17px; border-radius: 17px; }
+  .settings-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .secondary-button, .danger-button { justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

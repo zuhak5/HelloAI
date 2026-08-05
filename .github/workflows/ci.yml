@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "agent/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test
+      - name: Production build
+        run: npm run build
+        env:
+          GATEWAY_BASE_URL: https://example.invalid
+          CLIPROXY_API_KEY: ci-placeholder
+          HOME_GATEWAY_SECRET: ci-placeholder
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
+          VISION_GATEWAY_MODELS: gpt-5.6-terra
+          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          GATEWAY_BASE_URL: https://example.invalid
+          CLIPROXY_API_KEY: ci-placeholder
+          HOME_GATEWAY_SECRET: ci-placeholder
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
+          VISION_GATEWAY_MODELS: gpt-5.6-terra
+          REASONING_GATEWAY_MODELS: gpt-5.6-terra
