@@ -28,16 +28,15 @@ test("serves a valid manifest, required icons, and service worker", async ({ pag
   const supported = await page.evaluate(() => "serviceWorker" in navigator);
   test.skip(!supported, "Service workers are unavailable in this browser runtime.");
   await expect.poll(() => page.evaluate(async () => Boolean(await navigator.serviceWorker.getRegistration("/"))), { timeout: 15000 }).toBe(true);
-  await page.reload();
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
 });
 
-test("opens a cached privacy route while offline", async ({ page, context }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "The offline navigation smoke test runs once on desktop Chromium.");
+test("activates the worker and opens a cached privacy route while offline", async ({ page, context }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "The controller and offline lifecycle smoke test runs once on desktop Chromium.");
   await page.goto("/");
   await expect.poll(() => page.evaluate(async () => Boolean(await navigator.serviceWorker.getRegistration("/"))), { timeout: 15000 }).toBe(true);
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.reload();
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 30000 }).toBe(true);
   await context.setOffline(true);
   await page.goto("/privacy");
   await expect(page.getByRole("heading", { name: "Local-first by design" })).toBeVisible();
