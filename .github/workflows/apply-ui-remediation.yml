@@ -17,16 +17,17 @@ jobs:
         with:
           ref: ui/comprehensive-review-and-improvements
       - name: Apply reviewed source changes
-        run: python scripts/apply-ui-remediation.py
+        run: |
+          python scripts/apply-ui-remediation.py
+          git checkout -- .github/workflows/ci.yml
       - name: Review generated diff
         run: |
           git diff --check
           git diff --stat
       - name: Commit remediation
         run: |
-          rm .github/workflows/apply-ui-remediation.yml scripts/apply-ui-remediation.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/ci.yml UI_IMPROVEMENT_IMPLEMENTATION_PLAN.md components e2e lib tests .github/workflows/apply-ui-remediation.yml scripts/apply-ui-remediation.py
+          git add UI_IMPROVEMENT_IMPLEMENTATION_PLAN.md components e2e lib tests
           git commit -m "fix(ui): guard capability and modal state transitions"
           git push origin HEAD:ui/comprehensive-review-and-improvements
