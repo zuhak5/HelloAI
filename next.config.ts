@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 
-const production = process.env.NODE_ENV === "production";
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -15,7 +14,6 @@ const csp = [
   "connect-src 'self'",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
-  ...(production ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
