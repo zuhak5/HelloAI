@@ -1,0 +1,31 @@
+name: Apply Playwright fixture correction
+
+on:
+  push:
+    branches:
+      - ui/comprehensive-review-and-improvements
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ui/comprehensive-review-and-improvements
+      - name: Apply correction
+        run: python scripts/apply-e2e-fixture-fix.py
+      - name: Review diff
+        run: |
+          git diff --check
+          git diff --stat
+      - name: Commit correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add e2e/app.spec.ts
+          git commit -m "test(e2e): use a decodable image fixture"
+          git push origin HEAD:ui/comprehensive-review-and-improvements
