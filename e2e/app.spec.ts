@@ -1,17 +1,30 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const modelsPayload = {
   defaultModel: "gpt-5.6-terra",
   enabled: true,
+  configured: true,
   models: [{ id: "gpt-5.6-terra", name: "gpt-5.6-terra", vision: true, reasoning: true, available: true }],
 };
 
+const consoleProblems = new WeakMap<Page, string[]>();
+
 test.beforeEach(async ({ page }) => {
+  const problems: string[] = [];
+  consoleProblems.set(page, problems);
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning") problems.push(`${message.type()}: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
   await page.route("**/api/models", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify(modelsPayload),
   }));
+});
+
+test.afterEach(async ({ page }) => {
+  expect(consoleProblems.get(page) || []).toEqual([]);
 });
 
 test("opens directly into a usable local-first chat", async ({ page }) => {
@@ -60,14 +73,72 @@ test("traps focus in settings and restores it after Escape", async ({ page }) =>
 test("supports keyboard search and a narrow mobile layout without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto("/");
-  const composer = page.getByLabel("Message HelloAI");
-  await expect(composer).toBeVisible();
-  await composer.focus();
+  await expect(page.getByLabel("Message HelloAI")).toBeEditable();
   await page.keyboard.press("Control+k");
   await expect(page.getByLabel("Search conversations")).toBeFocused();
   await expect(page.getByLabel("Conversation navigation")).toBeVisible();
   await page.getByRole("button", { name: "Close sidebar" }).click();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  await expect(composer).toBeVisible();
+  await expect(page.getByLabel("Message HelloAI")).toBeVisible();
+});
+
+test("provides install UI even when the browser does not expose a native prompt", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open conversation sidebar" }).click();
+  await page.getByRole("button", { name: "Install app" }).click();
+  const dialog = page.getByRole("dialog", { name: "Install HelloAI" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/Manual installation available|Ready to install/)).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Install on this browser" })).toBeVisible();
+});
+
+test("uses a captured beforeinstallprompt event from the custom install action", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+  await expect(page.getByLabel("Message HelloAI")).toBeEditable();
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt") as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: "accepted" }>;
+    };
+    event.prompt = async () => { (window as Window & { __installPromptOpened?: boolean }).__installPromptOpened = true; };
+    event.userChoice = Promise.resolve({ outcome: "accepted" });
+    window.dispatchEvent(event);
+  });
+  await page.getByRole("button", { name: "Install HelloAI" }).click();
+  await page.getByRole("button", { name: "Install now" }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __installPromptOpened?: boolean }).__installPromptOpened)).toBe(true);
+});
+
+test("keeps core controls usable across target viewport classes", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "The exhaustive viewport matrix runs once on Chromium; engine coverage is provided by all other tests.");
+  await page.goto("/");
+  const viewports = [
+    { width: 320, height: 568 },
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+    { width: 768, height: 1024 },
+    { width: 1024, height: 768 },
+    { width: 1366, height: 768 },
+    { width: 1920, height: 1080 },
+    { width: 2560, height: 1080 },
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByLabel("Message HelloAI")).toBeVisible();
+    const dimensions = await page.evaluate(() => ({
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      bodyOverflow: document.body.scrollWidth - document.body.clientWidth,
+    }));
+    expect(dimensions.horizontalOverflow, `${viewport.width}x${viewport.height} document overflow`).toBeLessThanOrEqual(1);
+    expect(dimensions.bodyOverflow, `${viewport.width}x${viewport.height} body overflow`).toBeLessThanOrEqual(1);
+  }
+
+  await page.setViewportSize({ width: 640, height: 700 });
+  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
