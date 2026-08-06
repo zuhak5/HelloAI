@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.use({ serviceWorkers: "block" });
+
 const modelsPayload = {
   defaultModel: "gpt-5.6-terra",
   enabled: true,
