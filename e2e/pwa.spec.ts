@@ -32,7 +32,7 @@ test("serves a valid manifest, required icons, and service worker", async ({ pag
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
 });
 
-test("opens the cached app shell while offline", async ({ page, context, browserName }) => {
+test("opens a cached privacy route while offline", async ({ page, context, browserName }) => {
   test.skip(browserName !== "chromium", "Offline navigation smoke test is stabilized on Chromium.");
   await page.goto("/");
   await expect.poll(() => page.evaluate(async () => Boolean(await navigator.serviceWorker.getRegistration("/"))), { timeout: 15000 }).toBe(true);
@@ -40,6 +40,6 @@ test("opens the cached app shell while offline", async ({ page, context, browser
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
   await context.setOffline(true);
   await page.goto("/privacy");
-  await expect(page.getByRole("heading", { name: /Privacy/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Local-first by design" })).toBeVisible();
   await context.setOffline(false);
 });
