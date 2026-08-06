@@ -32,8 +32,8 @@ test("serves a valid manifest, required icons, and service worker", async ({ pag
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
 });
 
-test("opens a cached privacy route while offline", async ({ page, context, browserName }) => {
-  test.skip(browserName !== "chromium", "Offline navigation smoke test is stabilized on Chromium.");
+test("opens a cached privacy route while offline", async ({ page, context }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "The offline navigation smoke test runs once on desktop Chromium.");
   await page.goto("/");
   await expect.poll(() => page.evaluate(async () => Boolean(await navigator.serviceWorker.getRegistration("/"))), { timeout: 15000 }).toBe(true);
   await page.reload();
