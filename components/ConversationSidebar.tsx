@@ -15,7 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 import type { Conversation } from "@/lib/types";
 
 interface ConversationSidebarProps {
@@ -72,6 +72,12 @@ export function ConversationSidebar({
   onToggleArchive,
   onDelete,
 }: ConversationSidebarProps) {
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [open, searchInputRef]);
+
   return (
     <>
       {open && <button className="sidebar-backdrop" aria-label="Close conversation sidebar" onClick={onClose} />}
