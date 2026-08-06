@@ -4,6 +4,8 @@ import {
   Archive,
   ArchiveRestore,
   Bot,
+  CheckCircle2,
+  Download,
   Edit3,
   MessageSquarePlus,
   MoreHorizontal,
@@ -15,7 +17,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, type RefObject } from "react";
+import type { RefObject } from "react";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import type { Conversation } from "@/lib/types";
 
 interface ConversationSidebarProps {
@@ -26,6 +29,7 @@ interface ConversationSidebarProps {
   searching: boolean;
   open: boolean;
   busy: boolean;
+  pwaInstalled: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onClose: () => void;
   onNewChat: () => void;
@@ -33,6 +37,7 @@ interface ConversationSidebarProps {
   onSelect: (id: string) => void;
   onToggleArchiveView: () => void;
   onOpenSettings: () => void;
+  onOpenInstall: () => void;
   onRename: (conversation: Conversation) => void;
   onTogglePin: (conversation: Conversation) => void;
   onToggleArchive: (conversation: Conversation) => void;
@@ -60,6 +65,7 @@ export function ConversationSidebar({
   searching,
   open,
   busy,
+  pwaInstalled,
   searchInputRef,
   onClose,
   onNewChat,
@@ -67,28 +73,32 @@ export function ConversationSidebar({
   onSelect,
   onToggleArchiveView,
   onOpenSettings,
+  onOpenInstall,
   onRename,
   onTogglePin,
   onToggleArchive,
   onDelete,
 }: ConversationSidebarProps) {
-  useEffect(() => {
-    if (!open) return;
-    const frame = requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
-    return () => cancelAnimationFrame(frame);
-  }, [open, searchInputRef]);
+  const sidebarRef = useModalDialog<HTMLElement>(open, onClose, searchInputRef as RefObject<HTMLElement | null>);
 
   return (
     <>
-      {open && <button className="sidebar-backdrop" aria-label="Close conversation sidebar" onClick={onClose} />}
-      <aside className={`sidebar ${open ? "sidebar-open" : ""}`} aria-label="Conversation navigation">
+      {open && <button type="button" className="sidebar-backdrop" aria-label="Close conversation sidebar" onClick={onClose} />}
+      <aside
+        ref={sidebarRef}
+        className={`sidebar ${open ? "sidebar-open" : ""}`}
+        aria-label="Conversation navigation"
+        role={open ? "dialog" : "complementary"}
+        aria-modal={open || undefined}
+        tabIndex={open ? -1 : undefined}
+      >
         <div className="brand-row">
           <div className="brand-mark" aria-hidden="true"><Bot size={22} /></div>
           <div><strong>HelloAI</strong><span>Private local workspace</span></div>
-          <button className="icon-button mobile-only" aria-label="Close sidebar" onClick={onClose}><PanelLeftClose size={19} /></button>
+          <button type="button" className="icon-button mobile-only" aria-label="Close sidebar" onClick={onClose}><PanelLeftClose size={19} /></button>
         </div>
 
-        <button className="new-chat-button" onClick={onNewChat} disabled={busy}><MessageSquarePlus size={18} /> New chat</button>
+        <button type="button" className="new-chat-button" onClick={onNewChat} disabled={busy}><MessageSquarePlus size={18} /> New chat</button>
 
         <label className="search-box">
           <Search size={17} aria-hidden="true" />
@@ -113,6 +123,7 @@ export function ConversationSidebar({
           {conversations.map((conversation) => (
             <div key={conversation.id} className={`conversation-item ${conversation.id === currentId ? "active" : ""}`}>
               <button
+                type="button"
                 className="conversation-select"
                 onClick={() => onSelect(conversation.id)}
                 disabled={busy}
@@ -122,16 +133,21 @@ export function ConversationSidebar({
                 <small>{formatConversationDate(conversation.updatedAt)}</small>
               </button>
               <details className={`conversation-menu ${busy ? "disabled" : ""}`}>
-                <summary aria-label={`Actions for ${conversation.title}`} aria-disabled={busy} onClick={(event) => busy && event.preventDefault()}><MoreHorizontal size={17} /></summary>
+                <summary
+                  aria-label={`Actions for ${conversation.title}`}
+                  aria-disabled={busy}
+                  tabIndex={busy ? -1 : 0}
+                  onClick={(event) => busy && event.preventDefault()}
+                ><MoreHorizontal size={17} /></summary>
                 <div className="menu-popover">
-                  <button disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onRename(conversation); }}><Edit3 size={15} /> Rename</button>
-                  <button disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onTogglePin(conversation); }}>
+                  <button type="button" disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onRename(conversation); }}><Edit3 size={15} /> Rename</button>
+                  <button type="button" disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onTogglePin(conversation); }}>
                     {conversation.pinned ? <PinOff size={15} /> : <Pin size={15} />}{conversation.pinned ? "Unpin" : "Pin"}
                   </button>
-                  <button disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onToggleArchive(conversation); }}>
+                  <button type="button" disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onToggleArchive(conversation); }}>
                     {conversation.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}{conversation.archived ? "Restore" : "Archive"}
                   </button>
-                  <button className="menu-danger" disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onDelete(conversation); }}><Trash2 size={15} /> Delete</button>
+                  <button type="button" className="menu-danger" disabled={busy} onClick={(event) => { closeMenu(event.currentTarget); onDelete(conversation); }}><Trash2 size={15} /> Delete</button>
                 </div>
               </details>
             </div>
@@ -139,10 +155,13 @@ export function ConversationSidebar({
         </nav>
 
         <div className="sidebar-footer">
-          <button className={archiveView ? "active" : ""} onClick={onToggleArchiveView} disabled={busy}>
+          <button type="button" className={archiveView ? "active" : ""} onClick={onToggleArchiveView} disabled={busy}>
             {archiveView ? <ArchiveRestore size={17} /> : <Archive size={17} />}{archiveView ? "Back to chats" : "Archived"}
           </button>
-          <button onClick={onOpenSettings}><Settings size={17} /> Settings</button>
+          <button type="button" onClick={onOpenInstall}>
+            {pwaInstalled ? <CheckCircle2 size={17} /> : <Download size={17} />}{pwaInstalled ? "App installed" : "Install app"}
+          </button>
+          <button type="button" onClick={onOpenSettings}><Settings size={17} /> Settings</button>
           <a href="/privacy"><span>Privacy</span><small>Local-first</small></a>
         </div>
       </aside>

@@ -17,25 +17,22 @@ Vercel /api/chat (stateless, same-origin proxy)
 HomePilot zrok → Nginx → CLIProxyAPI → AI provider
 ```
 
-The Vercel route is required to keep the gateway API key and HomePilot secret out of browser code. It validates and forwards requests but writes no chats, files, telemetry, or settings to a database, Blob, KV, or filesystem.
+The Vercel route keeps the gateway API key and HomePilot secret out of browser code. It validates and forwards requests but writes no chats, files, telemetry, or settings to a database, Blob, KV, or filesystem.
 
 ## Included features
 
 - Immediate no-login chat experience
 - Streaming responses with stop and retry
-- Edit and resend user messages
-- Regenerate assistant answers
-- Branch a conversation from any message
-- Local conversation search
-- Rename, pin, archive, restore, and delete
-- Image paste, drag/drop, file upload, metadata stripping, resize, and WebP compression
+- Edit, resend, regenerate, and branch flows
+- Local conversation search, pinning, archive, rename, and deletion
+- Image paste, drag/drop, upload, metadata stripping, resize, and WebP compression
 - Markdown and GitHub-flavored tables/code
 - Model selection and capability-aware controls
 - Local drafts and multi-tab synchronization
-- JSON export/import for device backup and transfer
+- Strict JSON export/import for device backup and transfer
 - Light, dark, and system themes
-- Responsive desktop/mobile layout
-- Installable PWA with offline shell and local-history access
+- Responsive desktop, tablet, mobile, landscape, and ultrawide layouts
+- Installable PWA with offline shell, local-history access, update notifications, and cross-browser installation guidance
 - Same-origin enforcement, request validation, model allowlist, body limits, concurrency limits, and best-effort in-memory throttling
 - No application-level server persistence
 
@@ -64,33 +61,51 @@ CHAT_RATE_WINDOW_MS=300000
 
 Do not use `NEXT_PUBLIC_` for gateway credentials. Values prefixed with `NEXT_PUBLIC_` are exposed to browsers.
 
-`VISION_GATEWAY_MODELS` and `REASONING_GATEWAY_MODELS` are explicit capability allowlists. Only list models you have verified through the live gateway.
-
 ## Local development
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000`. Service workers are intentionally removed in development to prevent stale cached bundles. Test the complete PWA lifecycle with a production build:
+
+```bash
+npm run build
+npm run start
+```
 
 Run validation:
 
 ```bash
 npm run check
-npm run test:e2e
+PLAYWRIGHT_PRODUCTION=1 npm run test:e2e
 ```
+
+## PWA installation
+
+HelloAI shows an **Install app** action in the header, conversation sidebar, and Settings until the app is running in standalone mode.
+
+- Chrome and Edge: select **Install app**, then **Install now**. The browser prompt is available after the browser confirms installability.
+- iPhone and iPad: open the install dialog for guidance, then use the browser Share menu and **Add to Home Screen**. Safari is the most broadly compatible path.
+- Safari 17+ on macOS: use **File → Add to Dock**.
+- Firefox on Android: use the browser menu and **Install** or **Add to Home screen**.
+- Firefox desktop: standalone manifest-based installation is not currently available; use Chrome, Edge, or Safari, or continue using HelloAI in Firefox.
+
+The deployed application must use HTTPS. Localhost is treated as a secure context for development. The service worker caches the application shell, icons, privacy page, and offline fallback. API routes are never cached. Previously stored chats remain readable offline, but new model responses require connectivity.
+
+When a new worker is ready, HelloAI displays an update action instead of forcing an unexpected reload. This protects drafts and in-progress work.
 
 ## Deploy to Vercel
 
 1. Import `zuhak5/HelloAI` into Vercel.
 2. Add all required environment variables for Production and Preview.
 3. Set the Node.js runtime to 24.x if the project does not inherit it from `package.json`.
-4. Deploy.
-5. Verify `/api/health`, then open the app and send a small text prompt.
-6. Verify image input only after the selected model is confirmed to support vision.
-7. Configure Vercel Firewall/rate limiting before sharing the URL publicly.
+4. Deploy over HTTPS.
+5. Verify `/api/health`, `/manifest.webmanifest`, `/sw.js`, and the declared icon URLs.
+6. Open the app, send a small text prompt, and verify image input only with a confirmed vision-capable model.
+7. Verify the Install app flow in Chromium and Add to Home Screen/Add to Dock guidance on Apple platforms.
+8. Configure Vercel Firewall/rate limiting before sharing the URL publicly.
 
 Vercel should not be connected to a database, Blob store, KV store, or analytics product for this application.
 
@@ -102,19 +117,17 @@ Anyone who can access the deployed site can consume the shared gateway quota. Th
 
 - Chats and images are stored in IndexedDB in the current browser profile.
 - Small preferences are stored in localStorage.
-- Clearing site data removes local HelloAI data.
+- Clearing site data removes local HelloAI data, including installed-app storage.
 - There is no cloud recovery or cross-device synchronization.
 - Export/import is the supported backup and transfer method.
 - The AI provider still receives the content needed to answer each request.
 - Application code does not deliberately log prompts, responses, image content, or credentials.
 
-## PWA behavior
-
-The service worker caches the app shell, icons, privacy page, and offline fallback. API routes are never cached. Previously stored chats remain readable offline, but new model responses require connectivity.
-
 ## Repository documents
 
-- [`HELLOAI_IMPLEMENTATION_PLAN.md`](./HELLOAI_IMPLEMENTATION_PLAN.md) — full product and architecture plan
+- [`HELLOAI_IMPLEMENTATION_PLAN.md`](./HELLOAI_IMPLEMENTATION_PLAN.md) — product and architecture plan
+- [`UI_UX_AUDIT_REPORT.md`](./UI_UX_AUDIT_REPORT.md) — initial production-readiness audit
+- [`PWA_UI_AUDIT_REPORT.md`](./PWA_UI_AUDIT_REPORT.md) — PWA/installability and second-pass UI/UX audit
 - [`.env.example`](./.env.example) — deployment configuration template
 
 ## License

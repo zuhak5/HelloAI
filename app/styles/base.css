@@ -163,7 +163,7 @@ a { color: inherit; }
 }
 .search-box:focus-within { border-color: var(--accent); box-shadow: var(--focus-ring); }
 .search-box input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); padding: 9px 0; font-size: .84rem; }
-.search-box button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0; display: grid; place-items: center; border-radius: 7px; }
+.search-box button { width: 32px; height: 32px; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0; display: grid; place-items: center; border-radius: 7px; }
 .search-box button:hover { background: var(--panel-3); color: var(--text); }
 .search-spinner { width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -238,6 +238,7 @@ a { color: inherit; }
 .sidebar-footer button:disabled { opacity: .5; }
 .sidebar-footer a span { flex: 1; }
 .sidebar-footer a small { font-size: .65rem; color: var(--success); }
+.sidebar-footer button svg, .sidebar-footer a svg { flex: 0 0 auto; }
 
 @media (pointer: coarse) {
   .new-chat-button, .search-box, .sidebar-footer button, .sidebar-footer a { min-height: 44px; }

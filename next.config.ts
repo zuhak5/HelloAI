@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 
-const production = process.env.NODE_ENV === "production";
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -11,11 +10,10 @@ const csp = [
   "media-src 'self' blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"}`,
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "connect-src 'self'",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
-  ...(production ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
@@ -45,6 +43,17 @@ const nextConfig: NextConfig = {
           { key: "Service-Worker-Allowed", value: "/" },
         ],
       },
+      {
+        source: "/manifest.webmanifest",
+        headers: [
+          { key: "Content-Type", value: "application/manifest+json; charset=utf-8" },
+          { key: "Cache-Control", value: "public, max-age=3600, must-revalidate" },
+        ],
+      },
+      ...["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"].map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      })),
       { source: "/api/(.*)", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] },
     ];
   },

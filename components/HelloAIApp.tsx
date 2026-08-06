@@ -18,6 +18,8 @@ import { ChatComposer } from "@/components/ChatComposer";
 import { ChatMessages } from "@/components/ChatMessages";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { PwaInstallDialog } from "@/components/PwaInstallDialog";
+import { usePwa } from "@/components/PwaProvider";
 import {
   clearAllData,
   cloneConversation,
@@ -49,10 +51,6 @@ import type {
   Preferences,
 } from "@/lib/types";
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
 
 interface ModelsPayload {
   defaultModel?: string;
@@ -96,6 +94,7 @@ function downloadText(name: string, text: string, type = "application/json") {
 
 
 export function HelloAIApp() {
+  const pwa = usePwa();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -117,7 +116,7 @@ export function HelloAIApp() {
   const [initializing, setInitializing] = useState(true);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [storageText, setStorageText] = useState("Calculating…");
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
@@ -235,29 +234,17 @@ export function HelloAIApp() {
 
     const onlineHandler = () => setOnline(true);
     const offlineHandler = () => setOnline(false);
-    const installHandler = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-    };
-    const installedHandler = () => {
-      setInstallPrompt(null);
-      notify("HelloAI was installed.", "success");
-    };
 
     window.addEventListener("online", onlineHandler);
     window.addEventListener("offline", offlineHandler);
-    window.addEventListener("beforeinstallprompt", installHandler);
-    window.addEventListener("appinstalled", installedHandler);
 
     return () => {
       abortRef.current?.abort();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("offline", offlineHandler);
-      window.removeEventListener("beforeinstallprompt", installHandler);
-      window.removeEventListener("appinstalled", installedHandler);
     };
-  }, [initialize, notify]);
+  }, [initialize]);
 
   useEffect(() => subscribeToDatabaseChanges(() => {
     refreshConversations().catch(() => undefined);
@@ -810,14 +797,6 @@ export function HelloAIApp() {
     notify("Settings reset to defaults.", "success");
   }, [notify, updatePreferences]);
 
-  const installApp = useCallback(async () => {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
-    if (choice.outcome === "dismissed") notify("Installation was cancelled.", "info");
-    setInstallPrompt(null);
-  }, [installPrompt, notify]);
-
   const copyMessage = useCallback(async (message: ChatMessage) => {
     const text = messageText(message);
     try {
@@ -872,11 +851,10 @@ export function HelloAIApp() {
         setSidebarOpen(true);
         setTimeout(() => searchInputRef.current?.focus(), 0);
       }
-      if (event.key === "Escape" && sidebarOpen && !settingsOpen && !action) setSidebarOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [action, settingsOpen, sidebarOpen]);
+  }, []);
 
   const handleSuggestion = useCallback((suggestion: string) => {
     setComposer(suggestion);
@@ -919,24 +897,26 @@ export function HelloAIApp() {
         searching={searching}
         open={sidebarOpen}
         busy={generating || initializing}
+        pwaInstalled={pwa.installed}
         searchInputRef={searchInputRef}
         onClose={() => setSidebarOpen(false)}
         onNewChat={() => newChat().catch(() => undefined)}
         onSearch={setSearch}
         onSelect={selectConversation}
         onToggleArchiveView={toggleArchiveView}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => { setSidebarOpen(false); setSettingsOpen(true); }}
+        onOpenInstall={() => { setSidebarOpen(false); setInstallDialogOpen(true); }}
         onRename={(conversation) => setAction({ kind: "rename", conversation })}
         onTogglePin={(conversation) => updateConversation({ ...conversation, pinned: !conversation.pinned, updatedAt: new Date().toISOString() }).catch(() => notify("The conversation could not be updated.", "error"))}
         onToggleArchive={toggleArchive}
         onDelete={(conversation) => setAction({ kind: "delete", conversation })}
       />
 
-      <section id="chat-workspace" className="workspace" aria-label="Chat workspace" tabIndex={-1}>
+      <section id="chat-workspace" className="workspace" aria-label="Chat workspace" inert={sidebarOpen || undefined} tabIndex={-1}>
         <header className="workspace-header">
-          <button className="icon-button mobile-only" aria-label="Open conversation sidebar" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
+          <button type="button" className="icon-button mobile-only" aria-label="Open conversation sidebar" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
           <div className="header-title">
-            <strong>{currentConversation?.title || "HelloAI"}</strong>
+            <h1>{currentConversation?.title || "HelloAI"}</h1>
             <span>{!online ? "Local history only" : !gatewayConfigured ? "Gateway setup required" : gatewayEnabled ? "AI gateway available" : "AI gateway paused"}</span>
           </div>
           <div className="header-actions">
@@ -949,8 +929,8 @@ export function HelloAIApp() {
             <span className={`connection-pill ${generationAvailable ? "online" : "offline"}`}>
               {generationAvailable ? <Wifi size={14} /> : <WifiOff size={14} />}{connectionLabel}
             </span>
-            {installPrompt && <button className="icon-button desktop-install" onClick={installApp} aria-label="Install HelloAI"><Install size={19} /></button>}
-            <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings"><Settings size={19} /></button>
+            {!pwa.installed && <button type="button" className="icon-button install-action" onClick={() => setInstallDialogOpen(true)} aria-label="Install HelloAI" title="Install HelloAI"><Install size={19} /></button>}
+            <button type="button" className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings"><Settings size={19} /></button>
           </div>
         </header>
 
@@ -964,6 +944,7 @@ export function HelloAIApp() {
           initializationError={initializationError}
           generating={generating}
           generationAvailable={generationAvailable}
+          visionAvailable={Boolean(currentModel?.vision)}
           scrollRef={messageScrollRef}
           onScroll={handleMessageScroll}
           onRetryInitialization={reloadApp}
@@ -975,7 +956,7 @@ export function HelloAIApp() {
           onRead={readMessage}
         />
 
-        {showJumpToLatest && messages.length > 0 && <button className="jump-latest" onClick={() => scrollToLatest()} aria-label="Jump to latest message">Jump to latest</button>}
+        {showJumpToLatest && messages.length > 0 && <button type="button" className="jump-latest" onClick={() => scrollToLatest()} aria-label="Jump to latest message">Jump to latest</button>}
 
         <ChatComposer
           value={composer}
@@ -1010,12 +991,21 @@ export function HelloAIApp() {
         preferences={preferences}
         models={models}
         storageText={storageText}
+        pwaInstalled={pwa.installed}
+        pwaRegistrationState={pwa.registrationState}
         onChange={updatePreferences}
         onClose={() => setSettingsOpen(false)}
+        onOpenInstall={() => { setSettingsOpen(false); setInstallDialogOpen(true); }}
         onExport={exportChats}
         onImport={() => importInputRef.current?.click()}
         onClear={() => { setSettingsOpen(false); setAction({ kind: "clear" }); }}
         onReset={resetSettings}
+      />
+
+      <PwaInstallDialog
+        open={installDialogOpen}
+        onClose={() => setInstallDialogOpen(false)}
+        onResult={notify}
       />
 
       <ActionDialog
@@ -1072,7 +1062,8 @@ export function HelloAIApp() {
       <div className="generation-status sr-only" role="status" aria-live="polite">
         {generationAnnouncement}
       </div>
-      {toast && <div className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>{toastIcon}{toast.message}</div>}
+      {pwa.updateAvailable && <div className="update-banner" role="status"><span>A new HelloAI version is ready.</span><button type="button" onClick={pwa.applyUpdate}>Reload to update</button></div>}
+      {toast && <div className={`toast ${toast.tone}${pwa.updateAvailable ? " with-update" : ""}`} role={toast.tone === "error" ? "alert" : "status"}>{toastIcon}<span>{toast.message}</span><button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification">×</button></div>}
     </main>
   );
 }
