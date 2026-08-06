@@ -110,7 +110,7 @@ export function ConversationSidebar({
             aria-label="Search conversations"
             aria-controls="conversation-list"
           />
-          {searching && <span className="search-spinner" aria-label="Searching" />}
+          {searching && <span className="search-spinner" role="status"><span className="sr-only">Searching local conversations</span></span>}
           {search && !searching && <button type="button" onClick={() => onSearch("")} aria-label="Clear search"><X size={15} /></button>}
         </label>
 
@@ -130,7 +130,7 @@ export function ConversationSidebar({
                 aria-current={conversation.id === currentId ? "page" : undefined}
               >
                 <span>{conversation.pinned && <Pin size={12} fill="currentColor" aria-hidden="true" />}{conversation.title}</span>
-                <small>{formatConversationDate(conversation.updatedAt)}</small>
+                <small><time dateTime={conversation.updatedAt} aria-label={new Date(conversation.updatedAt).toLocaleString()}>{formatConversationDate(conversation.updatedAt)}</time></small>
               </button>
               <details className={`conversation-menu ${busy ? "disabled" : ""}`}>
                 <summary

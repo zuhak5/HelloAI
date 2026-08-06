@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, Copy, Edit3, GitBranch, RefreshCw, Send, User, Volume2 } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import type { RefObject, UIEvent } from "react";
 import { AttachmentImage } from "@/components/AttachmentImage";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
@@ -89,7 +89,7 @@ const MessageItem = memo(function MessageItem({
 
         {message.status !== "streaming" && (
           <div className="message-actions" aria-label="Message actions">
-            <button type="button" onClick={() => onCopy(message)} aria-label={`Copy ${isAssistant ? "assistant" : "your"} message`}><Copy size={14} /> Copy</button>
+            {text && <button type="button" onClick={() => onCopy(message)} aria-label={`Copy ${isAssistant ? "assistant" : "your"} message`}><Copy size={14} /> Copy</button>}
             {!isAssistant && <button type="button" onClick={() => onEdit(message)} disabled={generating || !generationAvailable}><Edit3 size={14} /> Edit</button>}
             {isAssistant && <button type="button" onClick={() => onRegenerate(message)} disabled={generating || !generationAvailable}><RefreshCw size={14} /> Regenerate</button>}
             <button type="button" onClick={() => onBranch(message)} disabled={generating}><GitBranch size={14} /> Branch</button>
@@ -123,7 +123,11 @@ export function ChatMessages({
   onBranch,
   onRead,
 }: ChatMessagesProps) {
-  const speechAvailable = typeof window !== "undefined" && "speechSynthesis" in window;
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+
+  useEffect(() => {
+    setSpeechAvailable("speechSynthesis" in window);
+  }, []);
 
   return (
     <div ref={scrollRef} className="message-scroll" onScroll={onScroll}>

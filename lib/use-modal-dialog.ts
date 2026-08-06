@@ -16,13 +16,19 @@ export function useModalDialog<T extends HTMLElement>(
   open: boolean,
   onClose: () => void,
   initialFocusRef?: RefObject<HTMLElement | null>,
+  dismissible = true,
 ) {
   const dialogRef = useRef<T>(null);
   const closeRef = useRef(onClose);
+  const dismissibleRef = useRef(dismissible);
 
   useEffect(() => {
     closeRef.current = onClose;
   }, [onClose]);
+
+  useEffect(() => {
+    dismissibleRef.current = dismissible;
+  }, [dismissible]);
 
   useEffect(() => {
     if (!open) return;
@@ -38,7 +44,7 @@ export function useModalDialog<T extends HTMLElement>(
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeRef.current();
+        if (dismissibleRef.current) closeRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialog) return;
@@ -54,7 +60,10 @@ export function useModalDialog<T extends HTMLElement>(
 
       const first = controls[0];
       const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {

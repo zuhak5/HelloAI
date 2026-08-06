@@ -11,7 +11,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIEvent } from "react";
 import { ActionDialog } from "@/components/ActionDialog";
 import { ChatComposer } from "@/components/ChatComposer";
@@ -137,6 +137,10 @@ export function HelloAIApp() {
   const currentConversation = conversations.find((conversation) => conversation.id === currentId);
   const selectedModelId = currentConversation?.model || preferences.model;
   const currentModel = models.find((model) => model.id === selectedModelId) || models[0];
+  const imageContextRef = useRef({ conversationId: currentId, modelId: selectedModelId, vision: Boolean(currentModel?.vision) });
+  useLayoutEffect(() => {
+    imageContextRef.current = { conversationId: currentId, modelId: selectedModelId, vision: Boolean(currentModel?.vision) };
+  }, [currentId, currentModel?.vision, selectedModelId]);
   const generationAvailable = online && gatewayEnabled && gatewayConfigured && Boolean(currentModel?.available);
 
   const notify = useCallback((message: string, tone: ToastTone = "info") => {
@@ -395,6 +399,11 @@ export function HelloAIApp() {
       notify("That model is currently unavailable.", "error");
       return;
     }
+    if (!modelInfo.vision && pendingImages.length) {
+      for (const image of pendingImages) URL.revokeObjectURL(image.previewUrl);
+      setPendingImages([]);
+      notify(`${pendingImages.length} attached image${pendingImages.length === 1 ? " was" : "s were"} removed because ${modelInfo.name} is text-only.`, "info");
+    }
     updatePreferences({ ...preferences, model });
     if (currentConversation) {
       try {
@@ -403,7 +412,7 @@ export function HelloAIApp() {
         notify("The model selection could not be saved.", "error");
       }
     }
-  }, [currentConversation, models, notify, preferences, updateConversation, updatePreferences]);
+  }, [currentConversation, models, notify, pendingImages, preferences, updateConversation, updatePreferences]);
 
   const addImages = useCallback(async (files: File[]) => {
     if (!currentModel?.vision) {
@@ -422,9 +431,20 @@ export function HelloAIApp() {
     }
     if (imageFiles.length > availableSlots) notify(`Only ${availableSlots} more image${availableSlots === 1 ? "" : "s"} can be attached.`, "info");
 
+    const preparationContext = imageContextRef.current;
     for (const file of imageFiles.slice(0, availableSlots)) {
       try {
         const prepared = await prepareImage(file);
+        const activeContext = imageContextRef.current;
+        if (
+          activeContext.conversationId !== preparationContext.conversationId
+          || activeContext.modelId !== preparationContext.modelId
+          || !activeContext.vision
+        ) {
+          URL.revokeObjectURL(prepared.previewUrl);
+          notify("An image attachment was discarded because the active chat or model changed while it was being processed.", "info");
+          continue;
+        }
         setPendingImages((items) => [...items, prepared]);
       } catch (error) {
         notify(error instanceof Error ? error.message : "The image could not be processed.", "error");
@@ -546,6 +566,10 @@ export function HelloAIApp() {
       notify("The selected model is unavailable. Choose another model.", "error");
       return;
     }
+    if (pendingImages.length && !currentModel.vision) {
+      notify("Remove image attachments or choose a model with image support before sending.", "error");
+      return;
+    }
 
     const trimmed = composer.trim();
     if (!trimmed && !pendingImages.length) return;
@@ -621,12 +645,13 @@ export function HelloAIApp() {
     } catch (error) {
       notify(error instanceof Error ? error.message : "The message could not be saved or sent.", "error");
     }
-  }, [composer, currentConversation, currentModel?.available, gatewayConfigured, gatewayEnabled, generate, generating, initializing, messages, notify, online, pendingImages, preferences.model]);
+  }, [composer, currentConversation, currentModel?.available, currentModel?.vision, gatewayConfigured, gatewayEnabled, generate, generating, initializing, messages, notify, online, pendingImages, preferences.model]);
 
   const stopGeneration = useCallback(() => abortRef.current?.abort(), []);
 
   const performRegenerate = useCallback(async (assistantMessage: ChatMessage) => {
     if (!currentConversation || generating) return;
+    if (!generationAvailable) throw new Error("AI generation is no longer available. Your conversation was not changed.");
     const index = messages.findIndex((message) => message.id === assistantMessage.id);
     const userIndex = [...messages.slice(0, index)].map((message) => message.role).lastIndexOf("user");
     if (userIndex < 0) return;
@@ -645,7 +670,7 @@ export function HelloAIApp() {
     await putMessage(nextAssistant);
     setMessages([...history, nextAssistant]);
     await generate(currentConversation, history, nextAssistant);
-  }, [currentConversation, generate, generating, messages]);
+  }, [currentConversation, generate, generating, generationAvailable, messages]);
 
   const requestRegenerate = useCallback((message: ChatMessage) => {
     const index = messages.findIndex((item) => item.id === message.id);
@@ -663,6 +688,7 @@ export function HelloAIApp() {
 
   const performEdit = useCallback(async (message: ChatMessage, revised: string) => {
     if (!currentConversation || generating) return;
+    if (!generationAvailable) throw new Error("AI generation is no longer available. Your conversation was not changed.");
     const updated: ChatMessage = {
       ...message,
       parts: [{ type: "text", text: revised }, ...message.parts.filter((part) => part.type === "image")],
@@ -683,7 +709,7 @@ export function HelloAIApp() {
     await putMessage(assistant);
     setMessages([...history, assistant]);
     await generate(currentConversation, history, assistant);
-  }, [currentConversation, generate, generating, messages]);
+  }, [currentConversation, generate, generating, generationAvailable, messages]);
 
   const branchFrom = useCallback(async (message: ChatMessage) => {
     if (!currentConversation || generating) return;
