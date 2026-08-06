@@ -1,8 +1,16 @@
-const CACHE_VERSION = "helloai-shell-v1";
+const CACHE_VERSION = "helloai-shell-v2";
 const SHELL = ["/", "/offline", "/privacy", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
+async function cacheShell() {
+  const cache = await caches.open(CACHE_VERSION);
+  await Promise.allSettled(SHELL.map(async (url) => {
+    const response = await fetch(url, { cache: "reload" });
+    if (response.ok) await cache.put(url, response);
+  }));
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(cacheShell().then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -23,24 +31,36 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => (await caches.match(request)) || (await caches.match("/")) || (await caches.match("/offline"))),
-    );
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const cache = await caches.open(CACHE_VERSION);
+          await cache.put(request, response.clone());
+        }
+        return response;
+      } catch {
+        return (await caches.match(request)) || (await caches.match("/")) || (await caches.match("/offline"));
+      }
+    })());
     return;
   }
 
   if (["style", "script", "font", "image"].includes(request.destination)) {
-    event.respondWith(
-      caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-        if (response.ok) caches.open(CACHE_VERSION).then((cache) => cache.put(request, response.clone()));
+    event.respondWith((async () => {
+      const cached = await caches.match(request);
+      const network = fetch(request).then(async (response) => {
+        if (response.ok) {
+          const cache = await caches.open(CACHE_VERSION);
+          await cache.put(request, response.clone());
+        }
         return response;
-      })),
-    );
+      });
+      if (cached) {
+        event.waitUntil(network.catch(() => undefined));
+        return cached;
+      }
+      return network;
+    })());
   }
 });

@@ -3,23 +3,38 @@
 import { useEffect, useState } from "react";
 import { getAttachment } from "@/lib/db";
 
+interface ImageState {
+  url?: string;
+  unavailable?: boolean;
+}
+
 export function AttachmentImage({ attachmentId, alt }: { attachmentId: string; alt: string }) {
-  const [url, setUrl] = useState<string>();
+  const [state, setState] = useState<ImageState>({});
+
   useEffect(() => {
     let active = true;
     let objectUrl: string | undefined;
+    setState({});
+
     getAttachment(attachmentId)
       .then((attachment) => {
-        if (!active || !attachment) return;
+        if (!active) return;
+        if (!attachment) {
+          setState({ unavailable: true });
+          return;
+        }
         objectUrl = URL.createObjectURL(attachment.blob);
-        setUrl(objectUrl);
+        setState({ url: objectUrl });
       })
-      .catch(() => undefined);
+      .catch(() => active && setState({ unavailable: true }));
+
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [attachmentId]);
 
-  return url ? <img className="message-image" src={url} alt={alt} loading="lazy" /> : <div className="image-placeholder">Image unavailable</div>;
+  if (state.url) return <img className="message-image" src={state.url} alt={alt} loading="lazy" decoding="async" />;
+  if (state.unavailable) return <div className="image-placeholder" role="img" aria-label={`${alt} is unavailable`}>Image unavailable</div>;
+  return <div className="image-placeholder image-loading" aria-hidden="true">Loading image…</div>;
 }

@@ -1,36 +1,22 @@
 "use client";
 
 import {
-  Archive,
-  ArchiveRestore,
-  Bot,
-  Check,
-  Copy,
-  Edit3,
-  GitBranch,
+  AlertCircle,
+  CheckCircle2,
+  Info,
   ImagePlus,
   Install,
   Menu,
-  MessageSquarePlus,
-  MoreHorizontal,
-  PanelLeftClose,
-  Pin,
-  PinOff,
-  RefreshCw,
-  Search,
-  Send,
   Settings,
-  Square,
-  Trash2,
-  User,
-  Volume2,
   Wifi,
   WifiOff,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AttachmentImage } from "@/components/AttachmentImage";
-import { MarkdownMessage } from "@/components/MarkdownMessage";
+import type { UIEvent } from "react";
+import { ActionDialog } from "@/components/ActionDialog";
+import { ChatComposer } from "@/components/ChatComposer";
+import { ChatMessages } from "@/components/ChatMessages";
+import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import {
   clearAllData,
@@ -39,8 +25,6 @@ import {
   deleteConversation,
   deleteMessagesAfter,
   exportLocalData,
-  getAttachment,
-  importLocalData,
   listConversations,
   listMessages,
   putAttachments,
@@ -50,12 +34,14 @@ import {
   searchConversations,
   subscribeToDatabaseChanges,
 } from "@/lib/db";
-import { blobToDataUrl, prepareImage } from "@/lib/images";
+import { importValidatedBackup } from "@/lib/backup";
+import { serializeHistory } from "@/lib/chat-history";
+import { formatBytes, messageText, titleFromText } from "@/lib/chat-utils";
+import { prepareImage } from "@/lib/images";
 import { applyTheme, DEFAULT_PREFERENCES, loadPreferences, savePreferences } from "@/lib/preferences";
 import { consumeGatewayStream } from "@/lib/stream";
 import type {
   AttachmentRecord,
-  BrowserChatMessage,
   ChatMessage,
   Conversation,
   ModelInfo,
@@ -68,6 +54,27 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+interface ModelsPayload {
+  defaultModel?: string;
+  enabled?: boolean;
+  configured?: boolean;
+  models?: ModelInfo[];
+}
+
+type ToastTone = "success" | "error" | "info";
+interface ToastState {
+  message: string;
+  tone: ToastTone;
+}
+
+type ActionState =
+  | { kind: "rename"; conversation: Conversation }
+  | { kind: "delete"; conversation: Conversation }
+  | { kind: "edit"; message: ChatMessage }
+  | { kind: "regenerate"; message: ChatMessage }
+  | { kind: "clear" }
+  | null;
+
 const FALLBACK_MODELS: ModelInfo[] = [
   { id: "gpt-5.6-terra", name: "gpt-5.6-terra", vision: true, reasoning: true, available: true },
   { id: "gpt-5.5", name: "gpt-5.5", vision: true, reasoning: true, available: true },
@@ -75,80 +82,18 @@ const FALLBACK_MODELS: ModelInfo[] = [
   { id: "gpt-5.4-mini", name: "gpt-5.4-mini", vision: true, reasoning: false, available: true },
 ];
 
-function messageText(message: ChatMessage): string {
-  return message.parts.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-}
-
-function titleFromText(text: string, hasImage: boolean): string {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (!compact) return hasImage ? "Image chat" : "New chat";
-  return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
-}
-
-function formatConversationDate(value: string): string {
-  const date = new Date(value);
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const index = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)));
-  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
 function downloadText(name: string, text: string, type = "application/json") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function serializeHistory(history: ChatMessage[], systemPrompt: string): Promise<BrowserChatMessage[]> {
-  const eligible = history
-    .filter((message) => message.status !== "streaming" && (messageText(message).trim() || message.parts.some((part) => part.type === "image")))
-    .slice(-40);
-  const allowedImageIds = new Set<string>();
-  for (const message of [...eligible].reverse()) {
-    for (const part of [...message.parts].reverse()) {
-      if (part.type === "image" && allowedImageIds.size < 3) allowedImageIds.add(part.attachmentId);
-    }
-  }
-
-  const serialized: BrowserChatMessage[] = [];
-  if (systemPrompt.trim()) {
-    serialized.push({ id: crypto.randomUUID(), role: "system", content: [{ type: "text", text: systemPrompt.trim() }] });
-  }
-
-  for (const message of eligible) {
-    const content: BrowserChatMessage["content"] = [];
-    for (const part of message.parts) {
-      if (part.type === "text" && part.text.trim()) content.push({ type: "text", text: part.text });
-      if (part.type === "image") {
-        if (!allowedImageIds.has(part.attachmentId)) {
-          content.push({ type: "text", text: `[Earlier image omitted from this request: ${part.name}]` });
-          continue;
-        }
-        const attachment = await getAttachment(part.attachmentId);
-        if (attachment) {
-          content.push({
-            type: "image",
-            mediaType: attachment.mediaType,
-            dataUrl: await blobToDataUrl(attachment.blob),
-            width: attachment.width,
-            height: attachment.height,
-          });
-        }
-      }
-    }
-    if (content.length) serialized.push({ id: message.id, role: message.role, content });
-  }
-  return serialized;
-}
 
 export function HelloAIApp() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -160,26 +105,45 @@ export function HelloAIApp() {
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [search, setSearch] = useState("");
   const [searchMatches, setSearchMatches] = useState<Set<string> | null>(null);
+  const [searching, setSearching] = useState(false);
   const [archiveView, setArchiveView] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [action, setAction] = useState<ActionState>(null);
   const [online, setOnline] = useState(true);
+  const [gatewayEnabled, setGatewayEnabled] = useState(true);
+  const [gatewayConfigured, setGatewayConfigured] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
   const [storageText, setStorageText] = useState("Calculating…");
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [generationAnnouncement, setGenerationAnnouncement] = useState("");
+
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const atBottomRef = useRef(true);
+  const dragDepthRef = useRef(0);
+  const pendingImagesRef = useRef<PendingImage[]>([]);
+  const discardGenerationRef = useRef(false);
 
   const currentConversation = conversations.find((conversation) => conversation.id === currentId);
-  const currentModel = models.find((model) => model.id === (currentConversation?.model || preferences.model)) || models[0];
+  const selectedModelId = currentConversation?.model || preferences.model;
+  const currentModel = models.find((model) => model.id === selectedModelId) || models[0];
+  const generationAvailable = online && gatewayEnabled && gatewayConfigured && Boolean(currentModel?.available);
 
-  const notify = useCallback((value: string) => {
-    setToast(value);
+  const notify = useCallback((message: string, tone: ToastTone = "info") => {
+    setToast({ message, tone });
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 3200);
+    toastTimerRef.current = setTimeout(() => setToast(null), tone === "error" ? 5000 : 3400);
   }, []);
 
   const refreshConversations = useCallback(async () => {
@@ -206,35 +170,68 @@ export function HelloAIApp() {
     setStorageText(`${formatBytes(estimate.usage || 0)} used of approximately ${formatBytes(estimate.quota || 0)}${persistent ? " · persistent storage granted" : ""}`);
   }, []);
 
-  useEffect(() => {
+  const initialize = useCallback(async () => {
+    setInitializing(true);
+    setInitializationError(null);
     const saved = loadPreferences();
     setPreferences(saved);
     applyTheme(saved);
     setOnline(navigator.onLine);
 
-    let active = true;
-    Promise.all([listConversations(), fetch("/api/models", { cache: "no-store" }).then((response) => response.ok ? response.json() : null).catch(() => null)])
-      .then(async ([storedConversations, modelPayload]) => {
-        if (!active) return;
-        if (modelPayload?.models?.length) {
-          setModels(modelPayload.models as ModelInfo[]);
-          if (!modelPayload.models.some((model: ModelInfo) => model.id === saved.model)) {
-            const next = { ...saved, model: modelPayload.defaultModel || modelPayload.models[0].id };
-            setPreferences(next);
-            savePreferences(next);
-          }
-        }
-        let nextConversations = storedConversations;
-        if (!nextConversations.length) nextConversations = [await createConversation(saved.model)];
-        if (!active) return;
-        setConversations(nextConversations);
-        const selected = nextConversations.find((conversation) => !conversation.archived) || nextConversations[0];
-        setCurrentId(selected?.id || null);
-      })
-      .catch(() => notify("Local storage could not be initialized."));
+    try {
+      const [storedConversations, modelPayload] = await Promise.all([
+        listConversations(),
+        fetch("/api/models", { cache: "no-store" })
+          .then(async (response) => response.ok ? await response.json() as ModelsPayload : null)
+          .catch(() => null),
+      ]);
 
-    navigator.storage?.persist?.().catch(() => undefined);
-    calculateStorage().catch(() => undefined);
+      let resolvedPreferences = saved;
+      if (modelPayload?.models?.length) {
+        setModels(modelPayload.models);
+        setGatewayEnabled(modelPayload.enabled !== false);
+        setGatewayConfigured(modelPayload.configured !== false);
+        if (!modelPayload.models.some((model) => model.id === saved.model && model.available)) {
+          resolvedPreferences = {
+            ...saved,
+            model: modelPayload.defaultModel || modelPayload.models.find((model) => model.available)?.id || modelPayload.models[0].id,
+          };
+          setPreferences(resolvedPreferences);
+          savePreferences(resolvedPreferences);
+        }
+      }
+
+      let nextConversations = storedConversations;
+      const query = new URLSearchParams(window.location.search);
+      const shortcutNewChat = query.get("new") === "1";
+      if (!nextConversations.length || shortcutNewChat) {
+        const conversation = await createConversation(resolvedPreferences.model);
+        nextConversations = [conversation, ...nextConversations];
+      }
+      if (shortcutNewChat) {
+        query.delete("new");
+        const suffix = query.toString();
+        window.history.replaceState(null, "", `${window.location.pathname}${suffix ? `?${suffix}` : ""}${window.location.hash}`);
+      }
+
+      setConversations(nextConversations);
+      const selected = nextConversations.find((conversation) => !conversation.archived) || nextConversations[0];
+      setCurrentId(selected?.id || null);
+      if (selected) {
+        setMessages(await listMessages(selected.id));
+        setComposer(selected.draft || "");
+      }
+      navigator.storage?.persist?.().catch(() => undefined);
+      calculateStorage().catch(() => undefined);
+    } catch (error) {
+      setInitializationError(error instanceof Error ? error.message : "Local storage could not be initialized.");
+    } finally {
+      setInitializing(false);
+    }
+  }, [calculateStorage]);
+
+  useEffect(() => {
+    initialize().catch(() => undefined);
 
     const onlineHandler = () => setOnline(true);
     const offlineHandler = () => setOnline(false);
@@ -242,63 +239,128 @@ export function HelloAIApp() {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
     };
+    const installedHandler = () => {
+      setInstallPrompt(null);
+      notify("HelloAI was installed.", "success");
+    };
+
     window.addEventListener("online", onlineHandler);
     window.addEventListener("offline", offlineHandler);
     window.addEventListener("beforeinstallprompt", installHandler);
+    window.addEventListener("appinstalled", installedHandler);
 
     return () => {
-      active = false;
+      abortRef.current?.abort();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("offline", offlineHandler);
       window.removeEventListener("beforeinstallprompt", installHandler);
+      window.removeEventListener("appinstalled", installedHandler);
     };
-  }, [calculateStorage, notify]);
+  }, [initialize, notify]);
 
   useEffect(() => subscribeToDatabaseChanges(() => {
     refreshConversations().catch(() => undefined);
-    refreshMessages(currentId).catch(() => undefined);
-  }), [currentId, refreshConversations, refreshMessages]);
+    if (!generating) refreshMessages(currentId).catch(() => undefined);
+  }), [currentId, generating, refreshConversations, refreshMessages]);
 
   useEffect(() => {
-    refreshMessages(currentId).catch(() => notify("Could not load this conversation."));
-    const conversation = conversations.find((item) => item.id === currentId);
-    setComposer(conversation?.draft || "");
+    if (initializing) return;
+    refreshMessages(currentId).catch(() => notify("Could not load this conversation.", "error"));
+    setComposer(currentConversation?.draft || "");
     setPendingImages((items) => {
       for (const item of items) URL.revokeObjectURL(item.previewUrl);
       return [];
     });
+    atBottomRef.current = true;
+    setShowJumpToLatest(false);
   }, [currentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!currentConversation) return;
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  useEffect(() => () => {
+    for (const item of pendingImagesRef.current) URL.revokeObjectURL(item.previewUrl);
+  }, []);
+
+  useEffect(() => {
+    if (!currentConversation || initializing) return;
     const timer = setTimeout(() => {
       if (currentConversation.draft === composer) return;
       const updated = { ...currentConversation, draft: composer };
       setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
-      putConversation(updated).catch(() => undefined);
+      putConversation(updated).catch(() => notify("Draft could not be saved locally.", "error"));
     }, 450);
     return () => clearTimeout(timer);
-  }, [composer, currentConversation]);
+  }, [composer, currentConversation, initializing, notify]);
 
   useEffect(() => {
     if (!search.trim()) {
       setSearchMatches(null);
+      setSearching(false);
       return;
     }
     let active = true;
+    setSearching(true);
     const timer = setTimeout(() => {
-      searchConversations(search).then((matches) => active && setSearchMatches(matches)).catch(() => undefined);
+      searchConversations(search)
+        .then((matches) => {
+          if (active) setSearchMatches(matches);
+        })
+        .catch(() => notify("Local search failed.", "error"))
+        .finally(() => active && setSearching(false));
     }, 220);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [search]);
+  }, [notify, search]);
+
+  useEffect(() => {
+    if (preferences.theme !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => applyTheme(preferences);
+    media.addEventListener("change", handler);
+    return () => media.removeEventListener("change", handler);
+  }, [preferences]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== "helloai.preferences.v1") return;
+      const next = loadPreferences();
+      setPreferences(next);
+      applyTheme(next);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const visibleConversations = useMemo(
     () => conversations.filter((conversation) => conversation.archived === archiveView && (!searchMatches || searchMatches.has(conversation.id))),
     [archiveView, conversations, searchMatches],
   );
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const container = messageScrollRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior });
+    atBottomRef.current = true;
+    setShowJumpToLatest(false);
+  }, []);
+
+  useEffect(() => {
+    if (!atBottomRef.current) return;
+    const frame = requestAnimationFrame(() => scrollToLatest(generating ? "auto" : "smooth"));
+    return () => cancelAnimationFrame(frame);
+  }, [generating, messages, scrollToLatest]);
+
+  const handleMessageScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget;
+    const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+    atBottomRef.current = nearBottom;
+    setShowJumpToLatest(!nearBottom);
+  }, []);
 
   const updatePreferences = useCallback((value: Preferences) => {
     setPreferences(value);
@@ -307,42 +369,78 @@ export function HelloAIApp() {
   }, []);
 
   const selectConversation = useCallback((id: string) => {
+    if (generating) {
+      notify("Stop the current response before switching conversations.", "info");
+      return;
+    }
     setCurrentId(id);
     setSidebarOpen(false);
-  }, []);
+  }, [generating, notify]);
 
   const newChat = useCallback(async () => {
-    const conversation = await createConversation(preferences.model);
-    setConversations((items) => [conversation, ...items]);
-    selectConversation(conversation.id);
-  }, [preferences.model, selectConversation]);
+    if (generating) {
+      notify("Stop the current response before starting another chat.", "info");
+      return;
+    }
+    try {
+      const conversation = await createConversation(preferences.model);
+      setConversations((items) => [conversation, ...items]);
+      setCurrentId(conversation.id);
+      setArchiveView(false);
+      setSearch("");
+      setSidebarOpen(false);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    } catch {
+      notify("A new local conversation could not be created.", "error");
+    }
+  }, [generating, notify, preferences.model]);
 
   const updateConversation = useCallback(async (conversation: Conversation) => {
     await putConversation(conversation);
-    setConversations((items) => items.map((item) => item.id === conversation.id ? conversation : item).sort((a, b) => Number(b.pinned) - Number(a.pinned) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
+    setConversations((items) => items
+      .map((item) => item.id === conversation.id ? conversation : item)
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
   }, []);
 
   const chooseModel = useCallback(async (model: string) => {
+    const modelInfo = models.find((item) => item.id === model);
+    if (!modelInfo?.available) {
+      notify("That model is currently unavailable.", "error");
+      return;
+    }
     updatePreferences({ ...preferences, model });
-    if (currentConversation) await updateConversation({ ...currentConversation, model, updatedAt: new Date().toISOString() });
-  }, [currentConversation, preferences, updateConversation, updatePreferences]);
+    if (currentConversation) {
+      try {
+        await updateConversation({ ...currentConversation, model, updatedAt: new Date().toISOString() });
+      } catch {
+        notify("The model selection could not be saved.", "error");
+      }
+    }
+  }, [currentConversation, models, notify, preferences, updateConversation, updatePreferences]);
 
   const addImages = useCallback(async (files: File[]) => {
     if (!currentModel?.vision) {
-      notify("The selected model is not configured for image input.");
+      notify("The selected model is not configured for image input.", "error");
+      return;
+    }
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length) {
+      notify("Drop or choose a JPEG, PNG, or WebP image.", "error");
       return;
     }
     const availableSlots = 3 - pendingImages.length;
     if (availableSlots <= 0) {
-      notify("A message may contain at most three images.");
+      notify("A message may contain at most three images.", "info");
       return;
     }
-    for (const file of files.slice(0, availableSlots)) {
+    if (imageFiles.length > availableSlots) notify(`Only ${availableSlots} more image${availableSlots === 1 ? "" : "s"} can be attached.`, "info");
+
+    for (const file of imageFiles.slice(0, availableSlots)) {
       try {
         const prepared = await prepareImage(file);
         setPendingImages((items) => [...items, prepared]);
       } catch (error) {
-        notify(error instanceof Error ? error.message : "The image could not be processed.");
+        notify(error instanceof Error ? error.message : "The image could not be processed.", "error");
       }
     }
   }, [currentModel?.vision, notify, pendingImages.length]);
@@ -361,12 +459,16 @@ export function HelloAIApp() {
 
   const generate = useCallback(async (conversation: Conversation, history: ChatMessage[], assistant: ChatMessage) => {
     const controller = new AbortController();
+    discardGenerationRef.current = false;
     abortRef.current = controller;
     setGenerating(true);
+    setGenerationAnnouncement("HelloAI is generating a response.");
+    atBottomRef.current = true;
     let text = "";
     let metadata: Partial<ChatMessage> = {};
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
     const started = performance.now();
+    const modelInfo = models.find((model) => model.id === conversation.model);
 
     const flush = () => {
       if (flushTimer) clearTimeout(flushTimer);
@@ -387,7 +489,7 @@ export function HelloAIApp() {
           model: conversation.model,
           messages: payloadMessages,
           maxOutputTokens: preferences.maxOutputTokens,
-          ...(preferences.reasoning !== "off" && currentModel?.reasoning ? { reasoning: preferences.reasoning } : {}),
+          ...(preferences.reasoning !== "off" && modelInfo?.reasoning ? { reasoning: preferences.reasoning } : {}),
         }),
       });
 
@@ -398,14 +500,10 @@ export function HelloAIApp() {
           if (!flushTimer) flushTimer = setTimeout(flush, 250);
         },
         onMeta(meta) {
-          metadata = {
-            ...metadata,
-            model: meta.model,
-            inputTokens: meta.inputTokens,
-            outputTokens: meta.outputTokens,
-          };
+          metadata = { ...metadata, model: meta.model, inputTokens: meta.inputTokens, outputTokens: meta.outputTokens };
         },
       });
+
       if (!text.trim()) text = "The gateway completed the request without returning text.";
       const complete: ChatMessage = {
         ...assistant,
@@ -418,6 +516,7 @@ export function HelloAIApp() {
       await putMessage(complete);
       updateAssistantInState(assistant.id, complete);
       await refreshConversations();
+      setGenerationAnnouncement("HelloAI response complete.");
     } catch (error) {
       if (flushTimer) clearTimeout(flushTimer);
       const cancelled = controller.signal.aborted;
@@ -428,95 +527,118 @@ export function HelloAIApp() {
         error: cancelled ? "Generation stopped." : (error instanceof Error ? error.message : "Generation failed."),
         latencyMs: Math.round(performance.now() - started),
       };
-      await putMessage(failed);
-      updateAssistantInState(assistant.id, failed);
-      if (!cancelled) notify(failed.error || "Generation failed.");
+      if (!discardGenerationRef.current) {
+        await putMessage(failed).catch(() => undefined);
+        updateAssistantInState(assistant.id, failed);
+      }
+      setGenerationAnnouncement(cancelled ? "Generation stopped." : "HelloAI response failed.");
+      if (!cancelled) notify(failed.error || "Generation failed.", "error");
     } finally {
       abortRef.current = null;
+      discardGenerationRef.current = false;
       setGenerating(false);
+      requestAnimationFrame(() => textareaRef.current?.focus());
     }
-  }, [currentModel?.reasoning, notify, preferences.maxOutputTokens, preferences.reasoning, preferences.systemPrompt, refreshConversations, updateAssistantInState]);
+  }, [models, notify, preferences.maxOutputTokens, preferences.reasoning, preferences.systemPrompt, refreshConversations, updateAssistantInState]);
 
   const sendMessage = useCallback(async () => {
-    if (generating) return;
+    if (generating || initializing) return;
     if (!online) {
-      notify("You are offline. Local chats remain available, but AI generation requires a connection.");
+      notify("You are offline. Local chats remain available, but AI generation requires a connection.", "info");
       return;
     }
+    if (!gatewayConfigured) {
+      notify("The AI gateway credentials are not configured yet.", "error");
+      return;
+    }
+    if (!gatewayEnabled) {
+      notify("Chat is temporarily paused by the gateway administrator.", "error");
+      return;
+    }
+    if (!currentModel?.available) {
+      notify("The selected model is unavailable. Choose another model.", "error");
+      return;
+    }
+
     const trimmed = composer.trim();
     if (!trimmed && !pendingImages.length) return;
 
-    let conversation = currentConversation;
-    if (!conversation) {
-      conversation = await createConversation(preferences.model);
-      setConversations((items) => [conversation!, ...items]);
-      setCurrentId(conversation.id);
+    try {
+      let conversation = currentConversation;
+      if (!conversation) {
+        conversation = await createConversation(preferences.model);
+        setConversations((items) => [conversation!, ...items]);
+        setCurrentId(conversation.id);
+      }
+
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const userMessage: ChatMessage = {
+        id: userId,
+        conversationId: conversation.id,
+        role: "user",
+        parts: [
+          ...(trimmed ? [{ type: "text" as const, text: trimmed }] : []),
+          ...pendingImages.map((image) => ({
+            type: "image" as const,
+            attachmentId: image.id,
+            name: image.name,
+            mediaType: image.mediaType,
+            width: image.width,
+            height: image.height,
+          })),
+        ],
+        createdAt: now,
+        status: "complete",
+      };
+      const assistant: ChatMessage = {
+        id: crypto.randomUUID(),
+        conversationId: conversation.id,
+        role: "assistant",
+        parts: [{ type: "text", text: "" }],
+        createdAt: new Date(Date.now() + 1).toISOString(),
+        status: "streaming",
+        requestId: crypto.randomUUID(),
+      };
+      const attachments: AttachmentRecord[] = pendingImages.map((image) => ({
+        id: image.id,
+        conversationId: conversation!.id,
+        messageId: userId,
+        name: image.name,
+        mediaType: image.mediaType,
+        width: image.width,
+        height: image.height,
+        size: image.size,
+        blob: image.blob,
+        createdAt: now,
+      }));
+      const updatedConversation: Conversation = {
+        ...conversation,
+        title: conversation.title === "New chat" ? titleFromText(trimmed, pendingImages.length > 0) : conversation.title,
+        draft: "",
+        updatedAt: now,
+      };
+
+      await Promise.all([putAttachments(attachments), putMessages([userMessage, assistant])]);
+      await putConversation(updatedConversation);
+      setConversations((items) => items.map((item) => item.id === conversation!.id ? updatedConversation : item));
+      const history = [...messages, userMessage];
+      setMessages([...history, assistant]);
+      setComposer("");
+      setPendingImages((items) => {
+        for (const item of items) URL.revokeObjectURL(item.previewUrl);
+        return [];
+      });
+      atBottomRef.current = true;
+      await generate(updatedConversation, history, assistant);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The message could not be saved or sent.", "error");
     }
-
-    const now = new Date().toISOString();
-    const userId = crypto.randomUUID();
-    const userMessage: ChatMessage = {
-      id: userId,
-      conversationId: conversation.id,
-      role: "user",
-      parts: [
-        ...(trimmed ? [{ type: "text" as const, text: trimmed }] : []),
-        ...pendingImages.map((image) => ({
-          type: "image" as const,
-          attachmentId: image.id,
-          name: image.name,
-          mediaType: image.mediaType,
-          width: image.width,
-          height: image.height,
-        })),
-      ],
-      createdAt: now,
-      status: "complete",
-    };
-    const assistant: ChatMessage = {
-      id: crypto.randomUUID(),
-      conversationId: conversation.id,
-      role: "assistant",
-      parts: [{ type: "text", text: "" }],
-      createdAt: new Date(Date.now() + 1).toISOString(),
-      status: "streaming",
-      requestId: crypto.randomUUID(),
-    };
-    const attachments: AttachmentRecord[] = pendingImages.map((image) => ({
-      id: image.id,
-      conversationId: conversation!.id,
-      messageId: userId,
-      name: image.name,
-      mediaType: image.mediaType,
-      width: image.width,
-      height: image.height,
-      size: image.size,
-      blob: image.blob,
-      createdAt: now,
-    }));
-
-    const updatedConversation: Conversation = {
-      ...conversation,
-      title: conversation.title === "New chat" ? titleFromText(trimmed, pendingImages.length > 0) : conversation.title,
-      draft: "",
-      updatedAt: now,
-    };
-    await Promise.all([putAttachments(attachments), putMessages([userMessage, assistant])]);
-    await putConversation(updatedConversation);
-    setConversations((items) => items.map((item) => item.id === conversation!.id ? updatedConversation : item));
-    const history = [...messages, userMessage];
-    setMessages([...history, assistant]);
-    setComposer("");
-    setPendingImages((items) => {
-      for (const item of items) URL.revokeObjectURL(item.previewUrl);
-      return [];
-    });
-    await generate(updatedConversation, history, assistant);
-  }, [composer, currentConversation, generate, generating, messages, notify, online, pendingImages, preferences.model]);
+  }, [composer, currentConversation, currentModel?.available, gatewayConfigured, gatewayEnabled, generate, generating, initializing, messages, notify, online, pendingImages, preferences.model]);
 
   const stopGeneration = useCallback(() => abortRef.current?.abort(), []);
 
-  const regenerate = useCallback(async (assistantMessage: ChatMessage) => {
+  const performRegenerate = useCallback(async (assistantMessage: ChatMessage) => {
     if (!currentConversation || generating) return;
     const index = messages.findIndex((message) => message.id === assistantMessage.id);
     const userIndex = [...messages.slice(0, index)].map((message) => message.role).lastIndexOf("user");
@@ -538,14 +660,25 @@ export function HelloAIApp() {
     await generate(currentConversation, history, nextAssistant);
   }, [currentConversation, generate, generating, messages]);
 
-  const editUserMessage = useCallback(async (message: ChatMessage) => {
+  const requestRegenerate = useCallback((message: ChatMessage) => {
+    const index = messages.findIndex((item) => item.id === message.id);
+    if (index >= 0 && index < messages.length - 1) setAction({ kind: "regenerate", message });
+    else performRegenerate(message).catch(() => notify("The response could not be regenerated.", "error"));
+  }, [messages, notify, performRegenerate]);
+
+  const requestEdit = useCallback((message: ChatMessage) => {
+    if (!generationAvailable) {
+      notify("AI generation is not currently available.", "info");
+      return;
+    }
+    setAction({ kind: "edit", message });
+  }, [generationAvailable, notify]);
+
+  const performEdit = useCallback(async (message: ChatMessage, revised: string) => {
     if (!currentConversation || generating) return;
-    const currentText = messageText(message);
-    const revised = window.prompt("Edit this message. Later messages will be removed.", currentText);
-    if (revised === null || !revised.trim()) return;
     const updated: ChatMessage = {
       ...message,
-      parts: [{ type: "text", text: revised.trim() }, ...message.parts.filter((part) => part.type === "image")],
+      parts: [{ type: "text", text: revised }, ...message.parts.filter((part) => part.type === "image")],
     };
     await putMessage(updated);
     await deleteMessagesAfter(currentConversation.id, message.createdAt, false);
@@ -566,219 +699,311 @@ export function HelloAIApp() {
   }, [currentConversation, generate, generating, messages]);
 
   const branchFrom = useCallback(async (message: ChatMessage) => {
-    if (!currentConversation) return;
+    if (!currentConversation || generating) return;
     try {
       const branch = await cloneConversation(currentConversation.id, message.id);
       await refreshConversations();
-      selectConversation(branch.id);
-      notify("Conversation branch created.");
+      setCurrentId(branch.id);
+      notify("Conversation branch created.", "success");
     } catch {
-      notify("Could not create the conversation branch.");
+      notify("Could not create the conversation branch.", "error");
     }
-  }, [currentConversation, notify, refreshConversations, selectConversation]);
+  }, [currentConversation, generating, notify, refreshConversations]);
 
-  const removeConversation = useCallback(async (conversation: Conversation) => {
-    if (!window.confirm(`Delete “${conversation.title}” and all local messages?`)) return;
+  const handleBranch = useCallback((message: ChatMessage) => {
+    branchFrom(message).catch(() => undefined);
+  }, [branchFrom]);
+
+  const performDeleteConversation = useCallback(async (conversation: Conversation) => {
     await deleteConversation(conversation.id);
     const next = await refreshConversations();
     if (currentId === conversation.id) {
-      const replacement = next.find((item) => !item.archived) || next[0];
+      const replacement = next.find((item) => item.archived === archiveView) || next.find((item) => !item.archived) || next[0];
       if (replacement) setCurrentId(replacement.id);
       else await newChat();
     }
-  }, [currentId, newChat, refreshConversations]);
+    notify("Conversation deleted from this device.", "success");
+  }, [archiveView, currentId, newChat, notify, refreshConversations]);
 
-  const renameConversation = useCallback(async (conversation: Conversation) => {
-    const title = window.prompt("Rename conversation", conversation.title)?.trim();
-    if (title) await updateConversation({ ...conversation, title: title.slice(0, 100), updatedAt: new Date().toISOString() });
-  }, [updateConversation]);
+  const toggleArchive = useCallback(async (conversation: Conversation) => {
+    if (generating) {
+      notify("Stop the current response before archiving conversations.", "info");
+      return;
+    }
+    const updated = { ...conversation, archived: !conversation.archived, updatedAt: new Date().toISOString() };
+    try {
+      await updateConversation(updated);
+      if (currentId === conversation.id && updated.archived !== archiveView) {
+        const replacement = conversations.find((item) => item.id !== conversation.id && item.archived === archiveView);
+        if (replacement) setCurrentId(replacement.id);
+        else if (!archiveView) await newChat();
+        else {
+          setCurrentId(null);
+          setMessages([]);
+        }
+      }
+      notify(updated.archived ? "Conversation archived." : "Conversation restored.", "success");
+    } catch {
+      notify("The conversation could not be updated.", "error");
+    }
+  }, [archiveView, conversations, currentId, generating, newChat, notify, updateConversation]);
+
+  const toggleArchiveView = useCallback(() => {
+    if (generating) {
+      notify("Stop the current response before changing conversation views.", "info");
+      return;
+    }
+    const nextView = !archiveView;
+    setArchiveView(nextView);
+    setSearch("");
+    const replacement = conversations.find((conversation) => conversation.archived === nextView);
+    if (replacement) setCurrentId(replacement.id);
+    else if (nextView) {
+      setCurrentId(null);
+      setMessages([]);
+    } else {
+      newChat().catch(() => undefined);
+    }
+  }, [archiveView, conversations, generating, newChat, notify]);
 
   const exportChats = useCallback(async () => {
     try {
       downloadText(`helloai-backup-${new Date().toISOString().slice(0, 10)}.json`, await exportLocalData());
-      notify("Local backup exported.");
+      notify("Local backup exported.", "success");
     } catch {
-      notify("Could not export local data.");
+      notify("Could not export local data.", "error");
     }
   }, [notify]);
 
   const importChats = useCallback(async (file: File) => {
     try {
-      await importLocalData(await file.text());
+      if (file.size > 50_000_000) throw new Error("The backup file must be smaller than 50 MB.");
+      await importValidatedBackup(await file.text());
       const next = await refreshConversations();
-      if (next[0]) setCurrentId(next[0].id);
+      const selected = next.find((conversation) => !conversation.archived) || next[0];
+      if (selected) setCurrentId(selected.id);
       await calculateStorage();
-      notify("Local backup imported.");
+      notify("Local backup imported and merged with this device.", "success");
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Could not import local data.");
+      notify(error instanceof Error ? error.message : "Could not import local data.", "error");
     } finally {
       if (importInputRef.current) importInputRef.current.value = "";
     }
   }, [calculateStorage, notify, refreshConversations]);
 
-  const clearData = useCallback(async () => {
-    if (!window.confirm("Delete every local conversation, image, and draft from this browser? This cannot be undone.")) return;
+  const performClearData = useCallback(async () => {
+    discardGenerationRef.current = true;
     abortRef.current?.abort();
     await clearAllData();
     const conversation = await createConversation(preferences.model);
     setConversations([conversation]);
     setCurrentId(conversation.id);
     setMessages([]);
+    setComposer("");
     setSettingsOpen(false);
     await calculateStorage();
-    notify("Local HelloAI data cleared.");
+    notify("Local HelloAI data cleared.", "success");
   }, [calculateStorage, notify, preferences.model]);
 
   const resetSettings = useCallback(() => {
     updatePreferences(DEFAULT_PREFERENCES);
-    notify("Settings reset to defaults.");
+    notify("Settings reset to defaults.", "success");
   }, [notify, updatePreferences]);
 
   const installApp = useCallback(async () => {
-    if (!installPrompt) {
-      notify("Use your browser menu and choose “Install app” or “Add to Home Screen.”");
-      return;
-    }
+    if (!installPrompt) return;
     await installPrompt.prompt();
-    await installPrompt.userChoice;
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "dismissed") notify("Installation was cancelled.", "info");
     setInstallPrompt(null);
   }, [installPrompt, notify]);
 
-  return (
-    <main className="app-shell" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
-      event.preventDefault();
-      addImages(Array.from(event.dataTransfer.files)).catch(() => undefined);
-    }}>
-      {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} />}
-      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
-        <div className="brand-row">
-          <div className="brand-mark"><Bot size={22} /></div>
-          <div><strong>HelloAI</strong><span>Private local workspace</span></div>
-          <button className="icon-button mobile-only" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)}><PanelLeftClose size={19} /></button>
-        </div>
-        <button className="new-chat-button" onClick={newChat}><MessageSquarePlus size={18} /> New chat</button>
-        <label className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search local chats" aria-label="Search conversations" />{search && <button onClick={() => setSearch("")} aria-label="Clear search"><X size={15} /></button>}</label>
-        <div className="conversation-list" aria-label={archiveView ? "Archived conversations" : "Conversations"}>
-          {visibleConversations.length === 0 && <div className="sidebar-empty">{search ? "No local matches." : archiveView ? "No archived chats." : "Start a new conversation."}</div>}
-          {visibleConversations.map((conversation) => (
-            <div key={conversation.id} className={`conversation-item ${conversation.id === currentId ? "active" : ""}`}>
-              <button className="conversation-select" onClick={() => selectConversation(conversation.id)}>
-                <span>{conversation.pinned && <Pin size={12} fill="currentColor" />}{conversation.title}</span>
-                <small>{formatConversationDate(conversation.updatedAt)}</small>
-              </button>
-              <details className="conversation-menu">
-                <summary aria-label={`Actions for ${conversation.title}`}><MoreHorizontal size={17} /></summary>
-                <div className="menu-popover">
-                  <button onClick={() => renameConversation(conversation)}><Edit3 size={15} /> Rename</button>
-                  <button onClick={() => updateConversation({ ...conversation, pinned: !conversation.pinned, updatedAt: new Date().toISOString() })}>{conversation.pinned ? <PinOff size={15} /> : <Pin size={15} />}{conversation.pinned ? "Unpin" : "Pin"}</button>
-                  <button onClick={() => updateConversation({ ...conversation, archived: !conversation.archived, updatedAt: new Date().toISOString() })}>{conversation.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}{conversation.archived ? "Restore" : "Archive"}</button>
-                  <button className="menu-danger" onClick={() => removeConversation(conversation)}><Trash2 size={15} /> Delete</button>
-                </div>
-              </details>
-            </div>
-          ))}
-        </div>
-        <div className="sidebar-footer">
-          <button className={archiveView ? "active" : ""} onClick={() => setArchiveView((value) => !value)}>{archiveView ? <ArchiveRestore size={17} /> : <Archive size={17} />}{archiveView ? "Back to chats" : "Archived"}</button>
-          <button onClick={() => setSettingsOpen(true)}><Settings size={17} /> Settings</button>
-          <a href="/privacy"><span>Privacy</span><small>Local-first</small></a>
-        </div>
-      </aside>
+  const copyMessage = useCallback(async (message: ChatMessage) => {
+    const text = messageText(message);
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("Copied to clipboard.", "success");
+    } catch {
+      notify("Clipboard access is unavailable. Select and copy the text manually.", "error");
+    }
+  }, [notify]);
 
-      <section className="workspace">
+  const readMessage = useCallback((message: ChatMessage) => {
+    if (!("speechSynthesis" in window)) {
+      notify("Text-to-speech is unavailable in this browser.", "error");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(messageText(message)));
+  }, [notify]);
+
+  const handleActionConfirm = useCallback(async (value?: string) => {
+    const currentAction = action;
+    if (!currentAction) return;
+    try {
+      if (currentAction.kind === "edit" && value) {
+        setAction(null);
+        await performEdit(currentAction.message, value);
+        return;
+      }
+      if (currentAction.kind === "regenerate") {
+        setAction(null);
+        await performRegenerate(currentAction.message);
+        return;
+      }
+      if (currentAction.kind === "rename" && value) {
+        await updateConversation({ ...currentAction.conversation, title: value.slice(0, 100), updatedAt: new Date().toISOString() });
+        notify("Conversation renamed.", "success");
+      } else if (currentAction.kind === "delete") {
+        await performDeleteConversation(currentAction.conversation);
+      } else if (currentAction.kind === "clear") {
+        await performClearData();
+      }
+      setAction(null);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The action could not be completed.", "error");
+    }
+  }, [action, notify, performClearData, performDeleteConversation, performEdit, performRegenerate, updateConversation]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSidebarOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+      }
+      if (event.key === "Escape" && sidebarOpen && !settingsOpen && !action) setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [action, settingsOpen, sidebarOpen]);
+
+  const handleSuggestion = useCallback((suggestion: string) => {
+    setComposer(suggestion);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  const reloadApp = useCallback(() => window.location.reload(), []);
+
+  const connectionLabel = !online ? "Offline" : !gatewayConfigured ? "Setup required" : !gatewayEnabled ? "Paused" : "Ready";
+  const toastIcon = toast?.tone === "success" ? <CheckCircle2 size={17} /> : toast?.tone === "error" ? <AlertCircle size={17} /> : <Info size={17} />;
+
+  return (
+    <main
+      className={`app-shell ${dragActive ? "drag-active" : ""}`}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        dragDepthRef.current += 1;
+        if (currentModel?.vision && Array.from(event.dataTransfer.types).includes("Files")) setDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setDragActive(false);
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        dragDepthRef.current = 0;
+        setDragActive(false);
+        addImages(Array.from(event.dataTransfer.files)).catch(() => undefined);
+      }}
+    >
+      <a className="skip-link" href="#chat-workspace">Skip to chat</a>
+
+      <ConversationSidebar
+        conversations={visibleConversations}
+        currentId={currentId}
+        archiveView={archiveView}
+        search={search}
+        searching={searching}
+        open={sidebarOpen}
+        busy={generating || initializing}
+        searchInputRef={searchInputRef}
+        onClose={() => setSidebarOpen(false)}
+        onNewChat={() => newChat().catch(() => undefined)}
+        onSearch={setSearch}
+        onSelect={selectConversation}
+        onToggleArchiveView={toggleArchiveView}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onRename={(conversation) => setAction({ kind: "rename", conversation })}
+        onTogglePin={(conversation) => updateConversation({ ...conversation, pinned: !conversation.pinned, updatedAt: new Date().toISOString() }).catch(() => notify("The conversation could not be updated.", "error"))}
+        onToggleArchive={toggleArchive}
+        onDelete={(conversation) => setAction({ kind: "delete", conversation })}
+      />
+
+      <section id="chat-workspace" className="workspace" aria-label="Chat workspace" tabIndex={-1}>
         <header className="workspace-header">
-          <button className="icon-button mobile-only" aria-label="Open sidebar" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
-          <div className="header-title"><strong>{currentConversation?.title || "HelloAI"}</strong><span>{online ? "AI gateway available" : "Offline · local history only"}</span></div>
+          <button className="icon-button mobile-only" aria-label="Open conversation sidebar" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
+          <div className="header-title">
+            <strong>{currentConversation?.title || "HelloAI"}</strong>
+            <span>{!online ? "Local history only" : !gatewayConfigured ? "Gateway setup required" : gatewayEnabled ? "AI gateway available" : "AI gateway paused"}</span>
+          </div>
           <div className="header-actions">
-            <label className="model-select"><span className="sr-only">Model</span><select value={currentConversation?.model || preferences.model} onChange={(event) => chooseModel(event.target.value)} disabled={generating}>{models.map((model) => <option key={model.id} value={model.id} disabled={!model.available}>{model.name}</option>)}</select></label>
-            <span className={`connection-pill ${online ? "online" : "offline"}`}>{online ? <Wifi size={14} /> : <WifiOff size={14} />}{online ? "Online" : "Offline"}</span>
-            <button className="icon-button desktop-install" onClick={installApp} aria-label="Install HelloAI"><Install size={19} /></button>
+            <label className="model-select">
+              <span className="sr-only">Model</span>
+              <select value={selectedModelId} onChange={(event) => chooseModel(event.target.value)} disabled={generating || initializing}>
+                {models.map((model) => <option key={model.id} value={model.id} disabled={!model.available}>{model.name}{model.available ? "" : " (unavailable)"}</option>)}
+              </select>
+            </label>
+            <span className={`connection-pill ${generationAvailable ? "online" : "offline"}`}>
+              {generationAvailable ? <Wifi size={14} /> : <WifiOff size={14} />}{connectionLabel}
+            </span>
+            {installPrompt && <button className="icon-button desktop-install" onClick={installApp} aria-label="Install HelloAI"><Install size={19} /></button>}
             <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings"><Settings size={19} /></button>
           </div>
         </header>
 
-        {!online && <div className="offline-banner"><WifiOff size={16} /> HelloAI is offline. You can read and manage local chats, but new AI requests are disabled.</div>}
+        {!online && <div className="offline-banner" role="status"><WifiOff size={16} /> HelloAI is offline. You can read and manage local chats, but new AI requests are disabled.</div>}
+        {online && !gatewayConfigured && <div className="offline-banner paused-banner" role="status"><WifiOff size={16} /> AI gateway credentials are not configured. Local conversations remain available.</div>}
+        {online && gatewayConfigured && !gatewayEnabled && <div className="offline-banner paused-banner" role="status"><WifiOff size={16} /> AI generation is temporarily paused. Local conversations remain available.</div>}
 
-        <div className="message-scroll">
-          {messages.length === 0 ? (
-            <div className="empty-state">
-              <div className="hero-mark"><Bot size={32} /></div>
-              <h1>What can I help with?</h1>
-              <p>Open and chat immediately. Conversations and images remain in this browser.</p>
-              <div className="suggestion-grid">
-                {["Explain a difficult idea simply", "Review and improve some code", "Plan a project step by step", "Analyze an image I upload"].map((suggestion) => (
-                  <button key={suggestion} onClick={() => setComposer(suggestion)}>{suggestion}<Send size={15} /></button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="messages" role="log" aria-live="polite">
-              {messages.map((message) => {
-                const text = messageText(message);
-                return (
-                  <article key={message.id} className={`message-row ${message.role}`}>
-                    <div className="message-avatar">{message.role === "assistant" ? <Bot size={18} /> : <User size={18} />}</div>
-                    <div className="message-main">
-                      <div className="message-heading"><strong>{message.role === "assistant" ? "HelloAI" : "You"}</strong><span>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
-                      <div className="message-content">
-                        {message.parts.filter((part) => part.type === "image").map((part) => part.type === "image" ? <AttachmentImage key={part.attachmentId} attachmentId={part.attachmentId} alt={part.name} /> : null)}
-                        {message.role === "assistant" ? <MarkdownMessage text={text} /> : <p className="user-text">{text}</p>}
-                        {message.status === "streaming" && <span className="stream-cursor" aria-label="Generating" />}
-                        {message.error && <div className={`message-error ${message.status === "cancelled" ? "cancelled" : ""}`}>{message.error}</div>}
-                      </div>
-                      {message.status !== "streaming" && (
-                        <div className="message-actions">
-                          <button onClick={() => navigator.clipboard.writeText(text).then(() => notify("Copied."))}><Copy size={14} /> Copy</button>
-                          {message.role === "user" && <button onClick={() => editUserMessage(message)}><Edit3 size={14} /> Edit</button>}
-                          {message.role === "assistant" && <button onClick={() => regenerate(message)}><RefreshCw size={14} /> Regenerate</button>}
-                          <button onClick={() => branchFrom(message)}><GitBranch size={14} /> Branch</button>
-                          {message.role === "assistant" && text && <button onClick={() => { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text)); }}><Volume2 size={14} /> Read</button>}
-                          {message.model && <span className="message-meta">{message.model}{message.outputTokens ? ` · ${message.outputTokens} tokens` : ""}{message.latencyMs ? ` · ${(message.latencyMs / 1000).toFixed(1)}s` : ""}</span>}
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <ChatMessages
+          messages={messages}
+          initializing={initializing}
+          initializationError={initializationError}
+          generating={generating}
+          generationAvailable={generationAvailable}
+          scrollRef={messageScrollRef}
+          onScroll={handleMessageScroll}
+          onRetryInitialization={reloadApp}
+          onSuggestion={handleSuggestion}
+          onCopy={(message) => copyMessage(message).catch(() => undefined)}
+          onEdit={requestEdit}
+          onRegenerate={requestRegenerate}
+          onBranch={handleBranch}
+          onRead={readMessage}
+        />
 
-        <div className="composer-zone">
-          <div className={`composer-card ${!online ? "disabled" : ""}`}>
-            {pendingImages.length > 0 && <div className="pending-images">{pendingImages.map((image) => <div key={image.id} className="pending-image"><img src={image.previewUrl} alt={image.name} /><button onClick={() => removePendingImage(image.id)} aria-label={`Remove ${image.name}`}><X size={14} /></button><span>{formatBytes(image.size)}</span></div>)}</div>}
-            <textarea
-              value={composer}
-              onChange={(event) => setComposer(event.target.value)}
-              onPaste={(event) => {
-                const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
-                if (files.length) addImages(files).catch(() => undefined);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  sendMessage().catch(() => undefined);
-                }
-              }}
-              placeholder={online ? "Message HelloAI…" : "Offline — drafts are saved locally"}
-              aria-label="Message HelloAI"
-              rows={1}
-              maxLength={30000}
-            />
-            <div className="composer-toolbar">
-              <div>
-                <button className="icon-button" onClick={() => fileInputRef.current?.click()} disabled={!currentModel?.vision || pendingImages.length >= 3} aria-label="Attach images" title={currentModel?.vision ? "Attach image" : "Image input is not enabled for this model"}><ImagePlus size={19} /></button>
-                <span className="composer-hint">{currentModel?.vision ? "Images supported" : "Text model"} · Enter to send</span>
-              </div>
-              {generating ? <button className="stop-button" onClick={stopGeneration}><Square size={15} fill="currentColor" /> Stop</button> : <button className="send-button" onClick={() => sendMessage().catch(() => undefined)} disabled={!online || (!composer.trim() && !pendingImages.length)}><Send size={17} /> Send</button>}
-            </div>
-          </div>
-          <p className="composer-disclaimer">AI can make mistakes. Chats are stored only on this device; requests are processed through the HomePilot gateway.</p>
-        </div>
+        {showJumpToLatest && messages.length > 0 && <button className="jump-latest" onClick={() => scrollToLatest()} aria-label="Jump to latest message">Jump to latest</button>}
+
+        <ChatComposer
+          value={composer}
+          pendingImages={pendingImages}
+          model={currentModel}
+          online={generationAvailable}
+          generating={generating}
+          initializing={initializing}
+          textareaRef={textareaRef}
+          fileInputRef={fileInputRef}
+          onChange={setComposer}
+          onAddImages={(files) => addImages(files).catch(() => undefined)}
+          onRemoveImage={removePendingImage}
+          onSend={() => sendMessage().catch(() => undefined)}
+          onStop={stopGeneration}
+        />
       </section>
 
-      <input ref={fileInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => addImages(Array.from(event.target.files || [])).finally(() => { if (fileInputRef.current) fileInputRef.current.value = ""; })} />
-      <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importChats(file).catch(() => undefined); }} />
+      {dragActive && (
+        <div className="drop-overlay" role="status" aria-live="polite">
+          <div><ImagePlus size={28} aria-hidden="true" /><strong>Drop images to attach</strong><span>JPEG, PNG, or WebP · up to three images</span></div>
+        </div>
+      )}
+
+      <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) importChats(file).catch(() => undefined);
+      }} />
 
       <SettingsDialog
         open={settingsOpen}
@@ -789,10 +1014,65 @@ export function HelloAIApp() {
         onClose={() => setSettingsOpen(false)}
         onExport={exportChats}
         onImport={() => importInputRef.current?.click()}
-        onClear={clearData}
+        onClear={() => { setSettingsOpen(false); setAction({ kind: "clear" }); }}
         onReset={resetSettings}
       />
-      {toast && <div className="toast"><Check size={16} />{toast}</div>}
+
+      <ActionDialog
+        open={action?.kind === "rename"}
+        title="Rename conversation"
+        description="Choose a concise name that will be easy to find in local search."
+        inputLabel="Conversation name"
+        initialValue={action?.kind === "rename" ? action.conversation.title : ""}
+        confirmLabel="Save name"
+        maxLength={100}
+        onClose={() => setAction(null)}
+        onConfirm={handleActionConfirm}
+      />
+      <ActionDialog
+        open={action?.kind === "edit"}
+        title="Edit and resend message"
+        description="This message will be replaced and every later message in this branch will be removed before HelloAI responds again."
+        inputLabel="Message"
+        initialValue={action?.kind === "edit" ? messageText(action.message) : ""}
+        confirmLabel="Save and resend"
+        maxLength={30000}
+        multiline
+        onClose={() => setAction(null)}
+        onConfirm={handleActionConfirm}
+      />
+      <ActionDialog
+        open={action?.kind === "delete"}
+        title="Delete conversation?"
+        description={action?.kind === "delete" ? `“${action.conversation.title}” and all of its locally stored messages and images will be permanently removed from this browser.` : ""}
+        confirmLabel="Delete conversation"
+        destructive
+        onClose={() => setAction(null)}
+        onConfirm={handleActionConfirm}
+      />
+      <ActionDialog
+        open={action?.kind === "regenerate"}
+        title="Regenerate from this point?"
+        description="This response and every message after it will be removed before a new response is generated."
+        confirmLabel="Regenerate response"
+        destructive
+        onClose={() => setAction(null)}
+        onConfirm={handleActionConfirm}
+      />
+      <ActionDialog
+        open={action?.kind === "clear"}
+        title="Clear all local data?"
+        description="Every conversation, message, image, and draft stored by HelloAI in this browser will be permanently deleted. Export a backup first if you may need this data later."
+        confirmLabel="Clear local data"
+        destructive
+        onClose={() => setAction(null)}
+        onConfirm={handleActionConfirm}
+      />
+
+      <div className="generation-status sr-only" role="status" aria-live="polite">
+        {generationAnnouncement}
+      </div>
+      {toast && <div className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>{toastIcon}{toast.message}</div>}
     </main>
   );
 }

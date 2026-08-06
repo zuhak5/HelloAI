@@ -2,6 +2,19 @@ import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import "./globals.css";
 
+const themeInitializer = `(() => {
+  try {
+    const defaults = { theme: "system", fontSize: "medium", compact: false };
+    const saved = JSON.parse(localStorage.getItem("helloai.preferences.v1") || "null") || defaults;
+    const theme = saved.theme || defaults.theme;
+    const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+    const root = document.documentElement;
+    root.dataset.theme = dark ? "dark" : "light";
+    root.dataset.fontSize = ["small", "medium", "large"].includes(saved.fontSize) ? saved.fontSize : defaults.fontSize;
+    root.dataset.compact = saved.compact ? "true" : "false";
+  } catch {}
+})();`;
+
 export const metadata: Metadata = {
   title: { default: "HelloAI", template: "%s · HelloAI" },
   description: "A local-first, no-login AI chat PWA powered by the HomePilot gateway.",
@@ -22,7 +35,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f7fb" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f6fa" },
     { media: "(prefers-color-scheme: dark)", color: "#0b0d12" },
   ],
 };
@@ -30,6 +43,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeInitializer }} /></head>
       <body>
         {children}
         <ServiceWorkerRegistration />
