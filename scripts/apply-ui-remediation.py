@@ -1,0 +1,421 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    file = Path(path)
+    text = file.read_text()
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected one match in {path}, found {count}: {old[:100]!r}")
+    file.write_text(text.replace(old, new, 1))
+
+
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''    updatePreferences({ ...preferences, model });
+''',
+    '''    if (!modelInfo.vision && pendingImages.length) {
+      for (const image of pendingImages) URL.revokeObjectURL(image.previewUrl);
+      setPendingImages([]);
+      notify(`${pendingImages.length} attached image${pendingImages.length === 1 ? " was" : "s were"} removed because ${modelInfo.name} is text-only.`, "info");
+    }
+    updatePreferences({ ...preferences, model });
+''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''  }, [currentConversation, models, notify, preferences, updateConversation, updatePreferences]);
+''',
+    '''  }, [currentConversation, models, notify, pendingImages, preferences, updateConversation, updatePreferences]);
+''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''    if (!currentModel?.available) {
+      notify("The selected model is unavailable. Choose another model.", "error");
+      return;
+    }
+
+    const trimmed = composer.trim();
+''',
+    '''    if (!currentModel?.available) {
+      notify("The selected model is unavailable. Choose another model.", "error");
+      return;
+    }
+    if (pendingImages.length && !currentModel.vision) {
+      notify("Remove image attachments or choose a model with image support before sending.", "error");
+      return;
+    }
+
+    const trimmed = composer.trim();
+''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''  }, [composer, currentConversation, currentModel?.available, gatewayConfigured, gatewayEnabled, generate, generating, initializing, messages, notify, online, pendingImages, preferences.model]);
+''',
+    '''  }, [composer, currentConversation, currentModel?.available, currentModel?.vision, gatewayConfigured, gatewayEnabled, generate, generating, initializing, messages, notify, online, pendingImages, preferences.model]);
+''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''  const performRegenerate = useCallback(async (assistantMessage: ChatMessage) => {
+    if (!currentConversation || generating) return;
+''',
+    '''  const performRegenerate = useCallback(async (assistantMessage: ChatMessage) => {
+    if (!currentConversation || generating) return;
+    if (!generationAvailable) throw new Error("AI generation is no longer available. Your conversation was not changed.");
+''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''  }, [currentConversation, generate, generating, messages]);
+
+  const requestRegenerate''',
+    '''  }, [currentConversation, generate, generating, generationAvailable, messages]);
+
+  const requestRegenerate''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''  const performEdit = useCallback(async (message: ChatMessage, revised: string) => {
+    if (!currentConversation || generating) return;
+''',
+    '''  const performEdit = useCallback(async (message: ChatMessage, revised: string) => {
+    if (!currentConversation || generating) return;
+    if (!generationAvailable) throw new Error("AI generation is no longer available. Your conversation was not changed.");
+''',
+)
+replace_once(
+    "components/HelloAIApp.tsx",
+    '''  }, [currentConversation, generate, generating, messages]);
+
+  const branchFrom''',
+    '''  }, [currentConversation, generate, generating, generationAvailable, messages]);
+
+  const branchFrom''',
+)
+
+replace_once(
+    "components/ChatMessages.tsx",
+    '''import { memo } from "react";
+''',
+    '''import { memo, useEffect, useState } from "react";
+''',
+)
+replace_once(
+    "components/ChatMessages.tsx",
+    '''            <button type="button" onClick={() => onCopy(message)} aria-label={`Copy ${isAssistant ? "assistant" : "your"} message`}><Copy size={14} /> Copy</button>
+''',
+    '''            {text && <button type="button" onClick={() => onCopy(message)} aria-label={`Copy ${isAssistant ? "assistant" : "your"} message`}><Copy size={14} /> Copy</button>}
+''',
+)
+replace_once(
+    "components/ChatMessages.tsx",
+    '''}: ChatMessagesProps) {
+  const speechAvailable = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  return (
+''',
+    '''}: ChatMessagesProps) {
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+
+  useEffect(() => {
+    setSpeechAvailable("speechSynthesis" in window);
+  }, []);
+
+  return (
+''',
+)
+
+replace_once(
+    "lib/use-modal-dialog.ts",
+    '''  initialFocusRef?: RefObject<HTMLElement | null>,
+) {
+  const dialogRef = useRef<T>(null);
+  const closeRef = useRef(onClose);
+''',
+    '''  initialFocusRef?: RefObject<HTMLElement | null>,
+  dismissible = true,
+) {
+  const dialogRef = useRef<T>(null);
+  const closeRef = useRef(onClose);
+  const dismissibleRef = useRef(dismissible);
+''',
+)
+replace_once(
+    "lib/use-modal-dialog.ts",
+    '''  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+''',
+    '''  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    dismissibleRef.current = dismissible;
+  }, [dismissible]);
+
+  useEffect(() => {
+''',
+)
+replace_once(
+    "lib/use-modal-dialog.ts",
+    '''      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+''',
+    '''      if (event.key === "Escape") {
+        event.preventDefault();
+        if (dismissibleRef.current) closeRef.current();
+        return;
+      }
+''',
+)
+replace_once(
+    "lib/use-modal-dialog.ts",
+    '''      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+''',
+    '''      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+''',
+)
+
+replace_once(
+    "components/ActionDialog.tsx",
+    '''  const dialogRef = useModalDialog<HTMLElement>(open, onClose, inputLabel ? inputRef as RefObject<HTMLElement | null> : undefined);
+''',
+    '''  const dialogRef = useModalDialog<HTMLElement>(open, onClose, inputLabel ? inputRef as RefObject<HTMLElement | null> : undefined, !submitting);
+''',
+)
+replace_once(
+    "components/ActionDialog.tsx",
+    '''        aria-describedby={descriptionId}
+        tabIndex={-1}
+''',
+    '''        aria-describedby={descriptionId}
+        aria-busy={submitting || undefined}
+        tabIndex={-1}
+''',
+)
+
+replace_once(
+    "components/PwaInstallDialog.tsx",
+    '''  const dialogRef = useModalDialog<HTMLElement>(open, onClose, pwa.canPrompt ? undefined : closeButtonRef);
+''',
+    '''  const dialogRef = useModalDialog<HTMLElement>(open, onClose, pwa.canPrompt ? undefined : closeButtonRef, !working);
+''',
+)
+replace_once(
+    "components/PwaInstallDialog.tsx",
+    '''        aria-describedby={descriptionId}
+        tabIndex={-1}
+''',
+    '''        aria-describedby={descriptionId}
+        aria-busy={working || undefined}
+        tabIndex={-1}
+''',
+)
+
+replace_once(
+    "components/ConversationSidebar.tsx",
+    '''          {searching && <span className="search-spinner" aria-label="Searching" />}
+''',
+    '''          {searching && <span className="search-spinner" role="status"><span className="sr-only">Searching local conversations</span></span>}
+''',
+)
+replace_once(
+    "components/ConversationSidebar.tsx",
+    '''                <small>{formatConversationDate(conversation.updatedAt)}</small>
+''',
+    '''                <small><time dateTime={conversation.updatedAt} aria-label={new Date(conversation.updatedAt).toLocaleString()}>{formatConversationDate(conversation.updatedAt)}</time></small>
+''',
+)
+
+replace_once(
+    "components/ChatComposer.tsx",
+    '''                <img src={image.previewUrl} alt="" />
+''',
+    '''                <img src={image.previewUrl} alt="" width={image.width} height={image.height} />
+''',
+)
+
+replace_once(
+    "UI_IMPROVEMENT_IMPLEMENTATION_PLAN.md",
+    '''## Verified issues
+''',
+    '''## Verified issues and targeted hardening
+''',
+)
+replace_once(
+    "UI_IMPROVEMENT_IMPLEMENTATION_PLAN.md",
+    '''### UI-001 — Speech control markup can differ during hydration
+
+- **Classification:** Verified defect
+- **Severity:** Medium
+''',
+    '''### UI-001 — Browser feature detection is coupled to render
+
+- **Classification:** Preventive hardening
+- **Severity:** Low
+''',
+)
+replace_once(
+    "UI_IMPROVEMENT_IMPLEMENTATION_PLAN.md",
+    '''- **Evidence:** `speechAvailable` is computed from `window` during render. Client components are pre-rendered, so server markup omits the action while the first browser render may include it.
+- **User impact:** Potential hydration warning, recoverable rerender, and unstable action layout on initial load with existing assistant messages.
+- **Accessibility impact:** Assistive technology can encounter a control inserted during hydration without an intentional state transition.
+''',
+    '''- **Evidence:** `speechAvailable` is computed from `window` during render. The current initialization skeleton prevents a demonstrated hydration warning, but the render-time global couples markup to execution environment and is fragile if initialization changes.
+- **User impact:** Prevents future server/client markup divergence and keeps the action layout deterministic.
+- **Accessibility impact:** Browser-only controls are introduced through an intentional mounted state transition.
+''',
+)
+
+replace_once(
+    ".github/workflows/ci.yml",
+    '''      - name: Production build
+        run: npm run build
+        env:
+''',
+    '''      - name: Production build
+        run: npm run build
+        env:
+''',
+)
+replace_once(
+    ".github/workflows/ci.yml",
+    '''          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+
+  e2e:
+''',
+    '''          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+      - name: Combined validation command
+        run: npm run check
+        env:
+          GATEWAY_BASE_URL: https://example.invalid
+          CLIPROXY_API_KEY: ci-placeholder
+          HOME_GATEWAY_SECRET: ci-placeholder
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
+          VISION_GATEWAY_MODELS: gpt-5.6-terra
+          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+
+  e2e:
+''',
+)
+
+Path("tests/use-modal-dialog.test.tsx").write_text('''// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test } from "vitest";
+import { useRef, useState } from "react";
+import { useModalDialog } from "@/lib/use-modal-dialog";
+
+function Harness({ dismissible }: { dismissible: boolean }) {
+  const [open, setOpen] = useState(true);
+  const initialRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useModalDialog<HTMLElement>(open, () => setOpen(false), initialRef, dismissible);
+
+  return (
+    <>
+      <button type="button">Outside</button>
+      {open ? (
+        <section ref={dialogRef} role="dialog" aria-label="Test dialog" tabIndex={-1}>
+          <button ref={initialRef} type="button">First</button>
+          <button type="button">Last</button>
+        </section>
+      ) : <span>Closed</span>}
+    </>
+  );
+}
+
+afterEach(cleanup);
+
+describe("useModalDialog", () => {
+  test("ignores Escape while dismissal is disabled", () => {
+    render(<Harness dismissible={false} />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Test dialog" })).toBeInTheDocument();
+  });
+
+  test("closes on Escape when dismissal is enabled", () => {
+    render(<Harness dismissible />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByText("Closed")).toBeInTheDocument();
+  });
+
+  test("returns focus to the dialog when focus moved outside", async () => {
+    render(<Harness dismissible />);
+    const first = screen.getByRole("button", { name: "First" });
+    await waitFor(() => expect(first).toHaveFocus());
+    const outside = screen.getByRole("button", { name: "Outside" });
+    outside.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(first).toHaveFocus();
+  });
+});
+''')
+
+replace_once(
+    "e2e/app.spec.ts",
+    '''  models: [{ id: "gpt-5.6-terra", name: "gpt-5.6-terra", vision: true, reasoning: true, available: true }],
+''',
+    '''  models: [
+    { id: "gpt-5.6-terra", name: "gpt-5.6-terra", vision: true, reasoning: true, available: true },
+    { id: "text-only", name: "Text only", vision: false, reasoning: false, available: true },
+  ],
+''',
+)
+
+marker = '''test("keeps core controls usable across target viewport classes", async ({ page, browserName }) => {\n'''
+insertion = '''test("removes queued images when switching to a text-only model", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Image capability transition is covered once in Chromium.");
+  await page.goto("/");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=", "base64");
+  await page.locator('input[type="file"][accept*="image/png"]').setInputFiles({ name: "sample.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByRole("button", { name: /Remove sample\\.webp/ })).toBeVisible();
+  await page.getByLabel("Model").selectOption("text-only");
+  await expect(page.getByRole("button", { name: /Remove sample\\.webp/ })).toBeHidden();
+  await expect(page.getByText(/removed because Text only is text-only/)).toBeVisible();
+  await expect(page.getByText(/Text model · Enter to send/)).toBeVisible();
+});
+
+test("does not truncate a conversation when regeneration becomes unavailable", async ({ page, context, browserName }) => {
+  test.skip(browserName !== "chromium", "The destructive availability transition is covered once in Chromium.");
+  await page.route("**/api/chat", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream; charset=utf-8",
+    body: 'data: {"delta":"Reply"}\\n\\ndata: [DONE]\\n\\n',
+  }));
+  await page.goto("/");
+  const composer = page.getByLabel("Message HelloAI");
+  await composer.fill("First prompt");
+  await composer.press("Enter");
+  await expect(page.getByText("Reply")).toBeVisible();
+  await composer.fill("Second prompt remains");
+  await composer.press("Enter");
+  await expect(page.getByText("Second prompt remains")).toBeVisible();
+  await page.getByRole("button", { name: "Regenerate" }).first().click();
+  await expect(page.getByRole("alertdialog", { name: "Regenerate from this point?" })).toBeVisible();
+  await context.setOffline(true);
+  await expect(page.getByText(/HelloAI is offline/)).toBeVisible();
+  await page.getByRole("button", { name: "Regenerate response" }).click();
+  await expect(page.getByText("Second prompt remains")).toBeVisible();
+  await expect(page.getByText(/conversation was not changed/)).toBeVisible();
+});
+
+''' + marker
+replace_once("e2e/app.spec.ts", marker, insertion)
