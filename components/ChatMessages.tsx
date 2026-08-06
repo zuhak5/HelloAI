@@ -14,6 +14,7 @@ interface ChatMessagesProps {
   initializationError: string | null;
   generating: boolean;
   generationAvailable: boolean;
+  visionAvailable: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
   onRetryInitialization: () => void;
@@ -75,7 +76,7 @@ const MessageItem = memo(function MessageItem({
       <article className="message-main" aria-label={`${isAssistant ? "HelloAI" : "Your"} message`}>
         <div className="message-heading">
           <strong>{isAssistant ? "HelloAI" : "You"}</strong>
-          <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+          <time dateTime={message.createdAt} aria-label={new Date(message.createdAt).toLocaleString()}>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
         </div>
         <div className="message-content">
           {message.parts.filter((part) => part.type === "image").map((part) => part.type === "image" ? (
@@ -88,11 +89,11 @@ const MessageItem = memo(function MessageItem({
 
         {message.status !== "streaming" && (
           <div className="message-actions" aria-label="Message actions">
-            <button onClick={() => onCopy(message)} aria-label={`Copy ${isAssistant ? "assistant" : "your"} message`}><Copy size={14} /> Copy</button>
-            {!isAssistant && <button onClick={() => onEdit(message)} disabled={generating || !generationAvailable}><Edit3 size={14} /> Edit</button>}
-            {isAssistant && <button onClick={() => onRegenerate(message)} disabled={generating || !generationAvailable}><RefreshCw size={14} /> Regenerate</button>}
-            <button onClick={() => onBranch(message)} disabled={generating}><GitBranch size={14} /> Branch</button>
-            {isAssistant && text && speechAvailable && <button onClick={() => onRead(message)}><Volume2 size={14} /> Read</button>}
+            <button type="button" onClick={() => onCopy(message)} aria-label={`Copy ${isAssistant ? "assistant" : "your"} message`}><Copy size={14} /> Copy</button>
+            {!isAssistant && <button type="button" onClick={() => onEdit(message)} disabled={generating || !generationAvailable}><Edit3 size={14} /> Edit</button>}
+            {isAssistant && <button type="button" onClick={() => onRegenerate(message)} disabled={generating || !generationAvailable}><RefreshCw size={14} /> Regenerate</button>}
+            <button type="button" onClick={() => onBranch(message)} disabled={generating}><GitBranch size={14} /> Branch</button>
+            {isAssistant && text && speechAvailable && <button type="button" onClick={() => onRead(message)}><Volume2 size={14} /> Read</button>}
             {message.model && (
               <span className="message-meta">
                 {message.model}{message.outputTokens ? ` · ${message.outputTokens} tokens` : ""}{message.latencyMs ? ` · ${(message.latencyMs / 1000).toFixed(1)}s` : ""}
@@ -111,6 +112,7 @@ export function ChatMessages({
   initializationError,
   generating,
   generationAvailable,
+  visionAvailable,
   scrollRef,
   onScroll,
   onRetryInitialization,
@@ -130,18 +132,18 @@ export function ChatMessages({
       ) : initializationError ? (
         <div className="empty-state error-state" role="alert">
           <div className="hero-mark"><Bot size={32} /></div>
-          <h1>Local workspace unavailable</h1>
+          <h2>Local workspace unavailable</h2>
           <p>{initializationError}</p>
-          <button className="primary-button" onClick={onRetryInitialization}>Reload HelloAI</button>
+          <button type="button" className="primary-button" onClick={onRetryInitialization}>Reload HelloAI</button>
         </div>
       ) : messages.length === 0 ? (
         <div className="empty-state">
           <div className="hero-mark" aria-hidden="true"><Bot size={32} /></div>
-          <h1>What can I help with?</h1>
+          <h2>What can I help with?</h2>
           <p>Open and chat immediately. Conversations and images remain in this browser.</p>
           <div className="suggestion-grid" aria-label="Suggested prompts">
-            {["Explain a difficult idea simply", "Review and improve some code", "Plan a project step by step", "Analyze an image I upload"].map((suggestion) => (
-              <button key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}<Send size={15} aria-hidden="true" /></button>
+            {["Explain a difficult idea simply", "Review and improve some code", "Plan a project step by step", visionAvailable ? "Analyze an image I upload" : "Draft a clear professional message"].map((suggestion) => (
+              <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}<Send size={15} aria-hidden="true" /></button>
             ))}
           </div>
         </div>

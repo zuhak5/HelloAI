@@ -20,7 +20,7 @@
   z-index: 10;
 }
 .header-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.header-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .95rem; letter-spacing: -.01em; }
+.header-title h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .95rem; letter-spacing: -.01em; line-height: 1.2; margin: 0; }
 .header-title span { color: var(--muted); font-size: .7rem; margin-top: 2px; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .icon-button {
@@ -38,6 +38,8 @@
 }
 .icon-button:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--panel-2); transform: translateY(-1px); }
 .icon-button:disabled { opacity: .38; }
+.install-action { color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); background: var(--accent-soft); }
+.install-action:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 78%, var(--panel)); }
 .model-select select {
   max-width: 190px;
   min-height: 40px;
@@ -84,7 +86,7 @@
   padding: 60px 0 90px;
 }
 .hero-mark { width: 64px; height: 64px; border-radius: 21px; margin-bottom: 22px; }
-.empty-state h1 { font-size: clamp(1.75rem, 4vw, 2.55rem); letter-spacing: -.045em; line-height: 1.08; margin: 0; }
+.empty-state h2 { font-size: clamp(1.75rem, 4vw, 2.55rem); letter-spacing: -.045em; line-height: 1.08; margin: 0; }
 .empty-state > p { color: var(--muted); margin: 12px 0 30px; max-width: 540px; line-height: 1.65; }
 .error-state .hero-mark { background: var(--danger-soft); color: var(--danger); box-shadow: none; }
 .suggestion-grid { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }

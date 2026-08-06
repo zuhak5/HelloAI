@@ -1,7 +1,7 @@
 "use client";
 
-import { Download, HardDrive, Import, RotateCcw, Trash2, X } from "lucide-react";
-import { useId, useRef } from "react";
+import { AlertTriangle, CheckCircle2, Download, HardDrive, Import, MonitorSmartphone, RotateCcw, Trash2, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useModalDialog } from "@/lib/use-modal-dialog";
 import type { ModelInfo, Preferences } from "@/lib/types";
 
@@ -10,8 +10,11 @@ interface Props {
   preferences: Preferences;
   models: ModelInfo[];
   storageText: string;
+  pwaInstalled: boolean;
+  pwaRegistrationState: "checking" | "ready" | "development" | "unsupported" | "insecure" | "error";
   onChange: (value: Preferences) => void;
   onClose: () => void;
+  onOpenInstall: () => void;
   onExport: () => void;
   onImport: () => void;
   onClear: () => void;
@@ -22,12 +25,35 @@ export function SettingsDialog(props: Props) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const tokenHelpId = useId();
   const dialogRef = useModalDialog<HTMLElement>(props.open, props.onClose, closeButtonRef);
+  const [tokenDraft, setTokenDraft] = useState(String(props.preferences.maxOutputTokens));
+
+  useEffect(() => {
+    setTokenDraft(String(props.preferences.maxOutputTokens));
+  }, [props.preferences.maxOutputTokens]);
 
   if (!props.open) return null;
 
   const update = <K extends keyof Preferences>(key: K, value: Preferences[K]) => props.onChange({ ...props.preferences, [key]: value });
   const currentModel = props.models.find((model) => model.id === props.preferences.model);
+  const commitTokenDraft = () => {
+    const parsed = Number(tokenDraft);
+    const next = Number.isFinite(parsed) ? Math.min(8000, Math.max(16, Math.round(parsed))) : props.preferences.maxOutputTokens;
+    setTokenDraft(String(next));
+    if (next !== props.preferences.maxOutputTokens) update("maxOutputTokens", next);
+  };
+  const pwaStatus = props.pwaRegistrationState === "ready"
+    ? "Offline support ready"
+    : props.pwaRegistrationState === "checking"
+      ? "Checking offline support"
+      : props.pwaRegistrationState === "development"
+        ? "Enabled in production builds"
+      : props.pwaRegistrationState === "insecure"
+        ? "HTTPS required"
+        : props.pwaRegistrationState === "unsupported"
+          ? "Not supported by this browser"
+          : "Offline support needs attention";
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && props.onClose()}>
@@ -45,13 +71,14 @@ export function SettingsDialog(props: Props) {
             <p className="eyebrow">Local preferences</p>
             <h2 id={titleId}>Settings</h2>
           </div>
-          <button ref={closeButtonRef} className="icon-button" onClick={props.onClose} aria-label="Close settings"><X size={19} /></button>
+          <button ref={closeButtonRef} type="button" className="icon-button" onClick={props.onClose} aria-label="Close settings"><X size={19} /></button>
         </header>
 
         <p id={descriptionId} className="dialog-description settings-intro">
-          Adjust appearance, model behavior, and device-only data controls. Changes are saved automatically in this browser.
+          Adjust appearance, model behavior, installation, and device-only data controls. Changes are saved automatically in this browser.
         </p>
 
+        <h3 className="settings-section-title">Appearance and responses</h3>
         <div className="settings-grid">
           <label className="field">
             <span>Theme</span>
@@ -93,18 +120,26 @@ export function SettingsDialog(props: Props) {
           <label className="field">
             <span>Maximum response tokens</span>
             <input
-              type="number"
-              min={16}
-              max={8000}
+              type="text"
               inputMode="numeric"
-              value={props.preferences.maxOutputTokens}
-              onChange={(event) => update("maxOutputTokens", Math.min(8000, Math.max(16, Number(event.target.value) || 16)))}
+              pattern="[0-9]*"
+              value={tokenDraft}
+              aria-describedby={tokenHelpId}
+              onChange={(event) => /^\d*$/.test(event.target.value) && setTokenDraft(event.target.value)}
+              onBlur={commitTokenDraft}
+              onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
             />
-            <small>Allowed range: 16–8,000.</small>
+            <small id={tokenHelpId}>Allowed range: 16–8,000. The value is validated when you leave the field.</small>
           </label>
           <label className="field field-wide">
             <span>Default system instruction</span>
-            <textarea rows={4} maxLength={10000} value={props.preferences.systemPrompt} onChange={(event) => update("systemPrompt", event.target.value)} />
+            <textarea
+              rows={4}
+              maxLength={10000}
+              value={props.preferences.systemPrompt}
+              placeholder="Optional instructions applied to new AI requests"
+              onChange={(event) => update("systemPrompt", event.target.value)}
+            />
             <small>{props.preferences.systemPrompt.length.toLocaleString()}/10,000 characters</small>
           </label>
           <label className="check-field field-wide">
@@ -113,19 +148,26 @@ export function SettingsDialog(props: Props) {
           </label>
         </div>
 
+        <h3 className="settings-section-title settings-section-spaced">Application and storage</h3>
+        <button type="button" className="settings-status-card pwa-settings-card" onClick={props.onOpenInstall}>
+          {props.pwaInstalled ? <CheckCircle2 size={20} aria-hidden="true" /> : props.pwaRegistrationState === "error" || props.pwaRegistrationState === "insecure" ? <AlertTriangle size={20} aria-hidden="true" /> : <MonitorSmartphone size={20} aria-hidden="true" />}
+          <span><strong>{props.pwaInstalled ? "HelloAI is installed" : "Install HelloAI"}</strong><small>{pwaStatus}</small></span>
+          <span className="status-action">{props.pwaInstalled ? "View" : "Open"}</span>
+        </button>
+
         <div className="storage-card" role="status" aria-live="polite">
           <HardDrive size={19} aria-hidden="true" />
           <div><strong>Device storage</strong><span>{props.storageText}</span></div>
         </div>
 
         <div className="settings-actions" aria-label="Local data actions">
-          <button className="secondary-button" onClick={props.onExport}><Download size={17} /> Export chats</button>
-          <button className="secondary-button" onClick={props.onImport}><Import size={17} /> Import chats</button>
-          <button className="secondary-button" onClick={props.onReset}><RotateCcw size={17} /> Reset settings</button>
-          <button className="danger-button" onClick={props.onClear}><Trash2 size={17} /> Clear local data</button>
+          <button type="button" className="secondary-button" onClick={props.onExport}><Download size={17} /> Export chats</button>
+          <button type="button" className="secondary-button" onClick={props.onImport}><Import size={17} /> Import chats</button>
+          <button type="button" className="secondary-button" onClick={props.onReset}><RotateCcw size={17} /> Reset settings</button>
+          <button type="button" className="danger-button" onClick={props.onClear}><Trash2 size={17} /> Clear local data</button>
         </div>
 
-        <p className="settings-note">Chats, images, drafts, and preferences stay in this browser. AI requests still travel through the configured HomePilot gateway for processing.</p>
+        <p className="settings-note">Chats, images, drafts, and preferences stay in this browser profile. AI requests still travel through the configured HomePilot gateway for processing.</p>
       </section>
     </div>
   );
