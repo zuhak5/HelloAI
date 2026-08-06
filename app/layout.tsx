@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
+import { PwaProvider } from "@/components/PwaProvider";
 import "./globals.css";
 
 const themeInitializer = `(() => {
@@ -21,12 +21,17 @@ export const metadata: Metadata = {
   applicationName: "HelloAI",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "HelloAI", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false, address: false, email: false },
   icons: {
     icon: [
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
   },
 };
 
@@ -44,10 +49,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeInitializer }} /></head>
-      <body>
-        {children}
-        <ServiceWorkerRegistration />
-      </body>
+      <body><PwaProvider>{children}</PwaProvider></body>
     </html>
   );
 }
