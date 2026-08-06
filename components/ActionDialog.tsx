@@ -39,7 +39,7 @@ export function ActionDialog({
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  const dialogRef = useModalDialog<HTMLElement>(open, onClose, inputLabel ? inputRef as RefObject<HTMLElement | null> : undefined);
+  const dialogRef = useModalDialog<HTMLElement>(open, onClose, inputLabel ? inputRef as RefObject<HTMLElement | null> : undefined, !submitting);
 
   useEffect(() => {
     if (open) setValue(initialValue);
@@ -68,6 +68,7 @@ export function ActionDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
+        aria-busy={submitting || undefined}
         tabIndex={-1}
       >
         <form onSubmit={submit}>

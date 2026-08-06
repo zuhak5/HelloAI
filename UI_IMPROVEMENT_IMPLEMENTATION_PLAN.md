@@ -40,7 +40,7 @@ This plan separates verified defects from subjective enhancements. Implementatio
 - Vercel status on the baseline commit: success.
 - The local execution environment could not resolve GitHub directly, so the source review and publication use the connected GitHub API. Local command results will not be claimed; PR CI is the authoritative executable validation gate.
 
-## Verified issues
+## Verified issues and targeted hardening
 
 ### DATA-001 — Destructive edit/regenerate race after availability changes
 
@@ -70,16 +70,16 @@ This plan separates verified defects from subjective enhancements. Implementatio
 - **Testing:** E2E model payload with vision and text-only models; attach an image, switch model, verify the attachment is removed and the composer reports text-only capability.
 - **Acceptance criteria:** No image part can be sent using a model whose metadata has `vision: false`.
 
-### UI-001 — Speech control markup can differ during hydration
+### UI-001 — Browser feature detection is coupled to render
 
-- **Classification:** Verified defect
-- **Severity:** Medium
+- **Classification:** Preventive hardening
+- **Severity:** Low
 - **Complexity:** Small
 - **Regression risk:** Low
 - **Affected files:** `components/ChatMessages.tsx`, `e2e/app.spec.ts`
-- **Evidence:** `speechAvailable` is computed from `window` during render. Client components are pre-rendered, so server markup omits the action while the first browser render may include it.
-- **User impact:** Potential hydration warning, recoverable rerender, and unstable action layout on initial load with existing assistant messages.
-- **Accessibility impact:** Assistive technology can encounter a control inserted during hydration without an intentional state transition.
+- **Evidence:** `speechAvailable` is computed from `window` during render. The current initialization skeleton prevents a demonstrated hydration warning, but the render-time global couples markup to execution environment and is fragile if initialization changes.
+- **User impact:** Prevents future server/client markup divergence and keeps the action layout deterministic.
+- **Accessibility impact:** Browser-only controls are introduced through an intentional mounted state transition.
 - **Recommended solution:** Initialize feature availability to `false` and update it after mount with an effect.
 - **Testing:** Existing global console-warning assertion plus an E2E load with pre-seeded assistant content where practical.
 - **Acceptance criteria:** Initial server and hydration markup are stable; the speech action appears only after mounted feature detection.

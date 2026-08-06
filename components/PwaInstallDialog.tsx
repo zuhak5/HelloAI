@@ -18,7 +18,7 @@ export function PwaInstallDialog({ open, onClose, onResult }: Props) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  const dialogRef = useModalDialog<HTMLElement>(open, onClose, pwa.canPrompt ? undefined : closeButtonRef);
+  const dialogRef = useModalDialog<HTMLElement>(open, onClose, pwa.canPrompt ? undefined : closeButtonRef, !working);
 
   if (!open) return null;
 
@@ -58,6 +58,7 @@ export function PwaInstallDialog({ open, onClose, onResult }: Props) {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
+        aria-busy={working || undefined}
         tabIndex={-1}
       >
         <header className="dialog-header">

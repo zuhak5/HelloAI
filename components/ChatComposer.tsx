@@ -61,7 +61,7 @@ export function ChatComposer({
           <div className="pending-images" aria-label="Images attached to this message">
             {pendingImages.map((image) => (
               <div key={image.id} className="pending-image">
-                <img src={image.previewUrl} alt="" />
+                <img src={image.previewUrl} alt="" width={image.width} height={image.height} />
                 <button type="button" onClick={() => onRemoveImage(image.id)} aria-label={`Remove ${image.name}`}><X size={14} /></button>
                 <span>{formatBytes(image.size)}</span>
               </div>

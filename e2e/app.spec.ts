@@ -6,7 +6,10 @@ const modelsPayload = {
   defaultModel: "gpt-5.6-terra",
   enabled: true,
   configured: true,
-  models: [{ id: "gpt-5.6-terra", name: "gpt-5.6-terra", vision: true, reasoning: true, available: true }],
+  models: [
+    { id: "gpt-5.6-terra", name: "gpt-5.6-terra", vision: true, reasoning: true, available: true },
+    { id: "text-only", name: "Text only", vision: false, reasoning: false, available: true },
+  ],
 };
 
 const consoleProblems = new WeakMap<Page, string[]>();
@@ -114,6 +117,42 @@ test("uses a captured beforeinstallprompt event from the custom install action",
   await page.getByRole("button", { name: "Install HelloAI" }).click();
   await page.getByRole("button", { name: "Install now" }).click();
   await expect.poll(() => page.evaluate(() => (window as Window & { __installPromptOpened?: boolean }).__installPromptOpened)).toBe(true);
+});
+
+test("removes queued images when switching to a text-only model", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Image capability transition is covered once in Chromium.");
+  await page.goto("/");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=", "base64");
+  await page.locator('input[type="file"][accept*="image/png"]').setInputFiles({ name: "sample.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByRole("button", { name: /Remove sample\.webp/ })).toBeVisible();
+  await page.getByLabel("Model").selectOption("text-only");
+  await expect(page.getByRole("button", { name: /Remove sample\.webp/ })).toBeHidden();
+  await expect(page.getByText(/removed because Text only is text-only/)).toBeVisible();
+  await expect(page.getByText(/Text model · Enter to send/)).toBeVisible();
+});
+
+test("does not truncate a conversation when regeneration becomes unavailable", async ({ page, context, browserName }) => {
+  test.skip(browserName !== "chromium", "The destructive availability transition is covered once in Chromium.");
+  await page.route("**/api/chat", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream; charset=utf-8",
+    body: 'data: {"delta":"Reply"}\n\ndata: [DONE]\n\n',
+  }));
+  await page.goto("/");
+  const composer = page.getByLabel("Message HelloAI");
+  await composer.fill("First prompt");
+  await composer.press("Enter");
+  await expect(page.getByText("Reply")).toBeVisible();
+  await composer.fill("Second prompt remains");
+  await composer.press("Enter");
+  await expect(page.getByText("Second prompt remains")).toBeVisible();
+  await page.getByRole("button", { name: "Regenerate" }).first().click();
+  await expect(page.getByRole("alertdialog", { name: "Regenerate from this point?" })).toBeVisible();
+  await context.setOffline(true);
+  await expect(page.getByText(/HelloAI is offline/)).toBeVisible();
+  await page.getByRole("button", { name: "Regenerate response" }).click();
+  await expect(page.getByText("Second prompt remains")).toBeVisible();
+  await expect(page.getByText(/conversation was not changed/)).toBeVisible();
 });
 
 test("keeps core controls usable across target viewport classes", async ({ page, browserName }) => {
