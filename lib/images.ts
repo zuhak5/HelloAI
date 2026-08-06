@@ -20,34 +20,40 @@ export async function prepareImage(file: File): Promise<PendingImage> {
   if (file.size > MAX_SOURCE_BYTES) throw new Error("The source image must be smaller than 12 MB.");
 
   const bitmap = await loadBitmap(file);
-  const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) throw new Error("This browser cannot process images.");
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
+  try {
+    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("This browser cannot process images.");
 
-  let blob = await canvasBlob(canvas, "image/webp", 0.86);
-  for (const quality of [0.76, 0.66, 0.56]) {
-    if (blob.size <= MAX_OUTPUT_BYTES) break;
-    blob = await canvasBlob(canvas, "image/webp", quality);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(bitmap, 0, 0, width, height);
+
+    let blob = await canvasBlob(canvas, "image/webp", 0.86);
+    for (const quality of [0.76, 0.66, 0.56]) {
+      if (blob.size <= MAX_OUTPUT_BYTES) break;
+      blob = await canvasBlob(canvas, "image/webp", quality);
+    }
+    if (blob.size > MAX_OUTPUT_BYTES) throw new Error("The processed image is still too large. Choose a smaller image.");
+
+    return {
+      id: crypto.randomUUID(),
+      name: file.name.replace(/\.[^.]+$/, "") + ".webp",
+      mediaType: "image/webp",
+      width,
+      height,
+      size: blob.size,
+      blob,
+      previewUrl: URL.createObjectURL(blob),
+    };
+  } finally {
+    bitmap.close();
   }
-  if (blob.size > MAX_OUTPUT_BYTES) throw new Error("The processed image is still too large. Choose a smaller image.");
-
-  return {
-    id: crypto.randomUUID(),
-    name: file.name.replace(/\.[^.]+$/, "") + ".webp",
-    mediaType: "image/webp",
-    width,
-    height,
-    size: blob.size,
-    blob,
-    previewUrl: URL.createObjectURL(blob),
-  };
 }
 
 export function blobToDataUrl(blob: Blob): Promise<string> {

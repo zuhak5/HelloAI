@@ -9,12 +9,13 @@ interface UpstreamModel {
 
 export async function GET() {
   const config = getGatewayConfig();
+  const configured = Boolean(config.apiKey && config.gatewaySecret);
   let availableIds = new Set<string>();
 
-  if (config.apiKey && config.gatewaySecret) {
+  if (configured) {
     try {
       const response = await fetch(`${config.baseUrl}/v1/models`, {
-        headers: gatewayHeaders({ apiKey: config.apiKey, gatewaySecret: config.gatewaySecret }),
+        headers: gatewayHeaders({ apiKey: config.apiKey!, gatewaySecret: config.gatewaySecret! }),
         cache: "no-store",
         signal: AbortSignal.timeout(12_000),
       });
@@ -40,7 +41,7 @@ export async function GET() {
   }));
 
   return Response.json(
-    { defaultModel: config.defaultModel, enabled: config.enabled, models },
+    { defaultModel: config.defaultModel, enabled: config.enabled, configured, models },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
