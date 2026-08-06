@@ -45,7 +45,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     needs: validate
     steps:
       - uses: actions/checkout@v4
@@ -54,9 +54,21 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - name: Build production application
+        run: npm run build
         env:
+          GATEWAY_BASE_URL: https://example.invalid
+          CLIPROXY_API_KEY: ci-placeholder
+          HOME_GATEWAY_SECRET: ci-placeholder
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
+          VISION_GATEWAY_MODELS: gpt-5.6-terra
+          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+      - name: Cross-browser and PWA end-to-end tests
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_PRODUCTION: "1"
           GATEWAY_BASE_URL: https://example.invalid
           CLIPROXY_API_KEY: ci-placeholder
           HOME_GATEWAY_SECRET: ci-placeholder
