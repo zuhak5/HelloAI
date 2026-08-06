@@ -60,11 +60,14 @@ test("traps focus in settings and restores it after Escape", async ({ page }) =>
 test("supports keyboard search and a narrow mobile layout without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto("/");
+  const composer = page.getByLabel("Message HelloAI");
+  await expect(composer).toBeVisible();
+  await composer.focus();
   await page.keyboard.press("Control+k");
   await expect(page.getByLabel("Search conversations")).toBeFocused();
   await expect(page.getByLabel("Conversation navigation")).toBeVisible();
   await page.getByRole("button", { name: "Close sidebar" }).click();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  await expect(page.getByLabel("Message HelloAI")).toBeVisible();
+  await expect(composer).toBeVisible();
 });
