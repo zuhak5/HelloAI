@@ -15,7 +15,9 @@ test.beforeEach(async ({ page }) => {
   const problems: string[] = [];
   consoleProblems.set(page, problems);
   page.on("console", (message) => {
-    if (message.type() === "error" || message.type() === "warning") problems.push(`${message.type()}: ${message.text()}`);
+    const text = message.text();
+    if (message.type() === "warning" && text === "Service Worker registration blocked by Playwright") return;
+    if (message.type() === "error" || message.type() === "warning") problems.push(`${message.type()}: ${text}`);
   });
   page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
   await page.route("**/api/models", (route) => route.fulfill({
