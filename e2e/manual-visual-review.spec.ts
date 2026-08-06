@@ -74,7 +74,7 @@ test("captures dark, dialog, install, mobile navigation, and offline states", as
   await page.screenshot({ path: "manual-qa/chromium-mobile-light.png", fullPage: true });
 
   await page.getByRole("button", { name: "Open conversation sidebar" }).click();
-  await expect(page.getByRole("complementary", { name: "Conversation sidebar" })).toBeVisible();
+  await expect(page.getByPlaceholder("Search local chats")).toBeVisible();
   await page.screenshot({ path: "manual-qa/chromium-mobile-sidebar-light.png", fullPage: true });
   await page.keyboard.press("Escape");
 
