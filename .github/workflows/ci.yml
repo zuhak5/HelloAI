@@ -49,6 +49,8 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.62.1-noble
     timeout-minutes: 35
     needs: validate
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
