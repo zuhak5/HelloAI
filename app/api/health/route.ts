@@ -13,10 +13,20 @@ export async function GET() {
   }
 
   try {
-    const response = await fetch(`${config.baseUrl}/v1/models`, {
+    // Caddy intentionally exposes only POST /v1/responses, so health uses the same
+    // end-to-end path as chat instead of probing the blocked /v1/models endpoint.
+    const response = await fetch(`${config.baseUrl}/v1/responses`, {
+      method: "POST",
       headers: gatewayHeaders({ apiKey: config.apiKey, gatewaySecret: config.gatewaySecret }),
+      body: JSON.stringify({
+        model: config.defaultModel,
+        input: "Reply with exactly: HELLOAI_OK",
+        max_output_tokens: 16,
+        stream: false,
+        store: false,
+      }),
       cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(12_000),
     });
     return Response.json(
       { status: response.ok ? "healthy" : "degraded", configured: true, gatewayStatus: response.status },
