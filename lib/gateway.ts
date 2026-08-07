@@ -1,9 +1,9 @@
 import "server-only";
 import { z } from "zod";
 import { MODEL_PATTERN, parseModelList } from "@/lib/model-utils";
-const DEFAULT_BASE_URL = "https://homepilot-ai.shares.zrok.io";
-const DEFAULT_MODEL = "gpt-5.6-terra";
-const DEFAULT_ALLOWED_MODELS = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.6-terra"];
+const DEFAULT_BASE_URL = "https://ai.safenetvpn.dedyn.io";
+const DEFAULT_MODEL = "gpt-5.6-luna";
+const DEFAULT_ALLOWED_MODELS = ["gpt-5.6-luna"];
 
 function cleanUrl(value: string): string {
   const parsed = new URL(value);
