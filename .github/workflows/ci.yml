@@ -38,20 +38,20 @@ jobs:
           GATEWAY_BASE_URL: https://example.invalid
           CLIPROXY_API_KEY: ci-placeholder
           HOME_GATEWAY_SECRET: ci-placeholder
-          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
-          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
-          VISION_GATEWAY_MODELS: gpt-5.6-terra
-          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-luna
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-luna
+          VISION_GATEWAY_MODELS: gpt-5.6-luna
+          REASONING_GATEWAY_MODELS: gpt-5.6-luna
       - name: Combined validation command
         run: npm run check
         env:
           GATEWAY_BASE_URL: https://example.invalid
           CLIPROXY_API_KEY: ci-placeholder
           HOME_GATEWAY_SECRET: ci-placeholder
-          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
-          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
-          VISION_GATEWAY_MODELS: gpt-5.6-terra
-          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-luna
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-luna
+          VISION_GATEWAY_MODELS: gpt-5.6-luna
+          REASONING_GATEWAY_MODELS: gpt-5.6-luna
 
   e2e:
     runs-on: ubuntu-latest
@@ -79,10 +79,10 @@ jobs:
           GATEWAY_BASE_URL: https://example.invalid
           CLIPROXY_API_KEY: ci-placeholder
           HOME_GATEWAY_SECRET: ci-placeholder
-          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
-          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
-          VISION_GATEWAY_MODELS: gpt-5.6-terra
-          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-luna
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-luna
+          VISION_GATEWAY_MODELS: gpt-5.6-luna
+          REASONING_GATEWAY_MODELS: gpt-5.6-luna
       - name: Cross-browser and PWA end-to-end tests
         run: npm run test:e2e
         env:
@@ -90,10 +90,10 @@ jobs:
           GATEWAY_BASE_URL: https://example.invalid
           CLIPROXY_API_KEY: ci-placeholder
           HOME_GATEWAY_SECRET: ci-placeholder
-          DEFAULT_GATEWAY_MODEL: gpt-5.6-terra
-          ALLOWED_GATEWAY_MODELS: gpt-5.6-terra
-          VISION_GATEWAY_MODELS: gpt-5.6-terra
-          REASONING_GATEWAY_MODELS: gpt-5.6-terra
+          DEFAULT_GATEWAY_MODEL: gpt-5.6-luna
+          ALLOWED_GATEWAY_MODELS: gpt-5.6-luna
+          VISION_GATEWAY_MODELS: gpt-5.6-luna
+          REASONING_GATEWAY_MODELS: gpt-5.6-luna
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v7
