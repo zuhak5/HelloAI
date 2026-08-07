@@ -14,10 +14,12 @@ Browser PWA
 Vercel /api/chat (stateless, same-origin proxy)
           │ server-only credentials
           ▼
-HomePilot zrok → Nginx → CLIProxyAPI → AI provider
+Caddy (ai.safenetvpn.dedyn.io) → Nginx → CLIProxyAPI → AI provider
 ```
 
 The Vercel route keeps the gateway API key and HomePilot secret out of browser code. It validates and forwards requests but writes no chats, files, telemetry, or settings to a database, Blob, KV, or filesystem.
+
+The public VM origin is deliberately hardened: only `POST /v1/responses` is exposed. `/v1/models` and `/v1/chat/completions` return `404`, so HelloAI uses its server-side model allowlist instead of public model discovery.
 
 ## Included features
 
@@ -39,7 +41,7 @@ The Vercel route keeps the gateway API key and HomePilot secret out of browser c
 ## Requirements
 
 - Node.js 24 or later
-- A running HomePilot/CLIProxyAPI gateway
+- A running HomePilot/CLIProxyAPI gateway behind the direct Caddy origin
 - A Vercel project connected to this repository
 
 ## Environment variables
@@ -47,17 +49,19 @@ The Vercel route keeps the gateway API key and HomePilot secret out of browser c
 Copy `.env.example` to `.env.local` for local development. Configure the same server-side variables in Vercel:
 
 ```text
-GATEWAY_BASE_URL=https://homepilot-ai.shares.zrok.io
+GATEWAY_BASE_URL=https://ai.safenetvpn.dedyn.io
 CLIPROXY_API_KEY=...
 HOME_GATEWAY_SECRET=...
-DEFAULT_GATEWAY_MODEL=gpt-5.6-terra
-ALLOWED_GATEWAY_MODELS=gpt-5.4-mini,gpt-5.4,gpt-5.5,gpt-5.6-terra
-VISION_GATEWAY_MODELS=gpt-5.4-mini,gpt-5.4,gpt-5.5,gpt-5.6-terra
-REASONING_GATEWAY_MODELS=gpt-5.4,gpt-5.5,gpt-5.6-terra
+DEFAULT_GATEWAY_MODEL=gpt-5.6-luna
+ALLOWED_GATEWAY_MODELS=gpt-5.6-luna
+VISION_GATEWAY_MODELS=gpt-5.6-luna
+REASONING_GATEWAY_MODELS=gpt-5.6-luna
 CHAT_ENABLED=true
 CHAT_RATE_LIMIT=20
 CHAT_RATE_WINDOW_MS=300000
 ```
+
+Do not add `/v1` to `GATEWAY_BASE_URL` in HelloAI; its server routes append `/v1/responses` themselves.
 
 Do not use `NEXT_PUBLIC_` for gateway credentials. Values prefixed with `NEXT_PUBLIC_` are exposed to browsers.
 
@@ -99,13 +103,14 @@ When a new worker is ready, HelloAI displays an update action instead of forcing
 ## Deploy to Vercel
 
 1. Import `zuhak5/HelloAI` into Vercel.
-2. Add all required environment variables for Production and Preview.
+2. Add all required environment variables for Production and Preview using the direct Caddy values above.
 3. Set the Node.js runtime to 24.x if the project does not inherit it from `package.json`.
-4. Deploy over HTTPS.
+4. Redeploy over HTTPS after environment-variable changes.
 5. Verify `/api/health`, `/manifest.webmanifest`, `/sw.js`, and the declared icon URLs.
-6. Open the app, send a small text prompt, and verify image input only with a confirmed vision-capable model.
-7. Verify the Install app flow in Chromium and Add to Home Screen/Add to Dock guidance on Apple platforms.
-8. Configure Vercel Firewall/rate limiting before sharing the URL publicly.
+6. Open the app, send a small text prompt, and confirm the selected model is `gpt-5.6-luna`.
+7. Verify image input only if Luna image input is enabled in `VISION_GATEWAY_MODELS` and works through the configured provider.
+8. Verify the Install app flow in Chromium and Add to Home Screen/Add to Dock guidance on Apple platforms.
+9. Configure Vercel Firewall/rate limiting before sharing the URL publicly.
 
 Vercel should not be connected to a database, Blob store, KV store, or analytics product for this application.
 
