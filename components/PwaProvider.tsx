@@ -152,6 +152,7 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     const waiting = registrationRef.current?.waiting;
     if (!waiting) return;
     reloadForUpdateRef.current = true;
+    waiting.postMessage({ type: "SKIP_WAITING" });
     waiting.postMessage("SKIP_WAITING");
   }, []);
 

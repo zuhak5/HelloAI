@@ -42,6 +42,8 @@ jobs:
           ALLOWED_GATEWAY_MODELS: gpt-5.6-luna
           VISION_GATEWAY_MODELS: gpt-5.6-luna
           REASONING_GATEWAY_MODELS: gpt-5.6-luna
+      - name: Validate generated PWA release
+        run: npm run validate:pwa
       - name: Combined validation command
         run: npm run check
         env:
@@ -83,6 +85,8 @@ jobs:
           ALLOWED_GATEWAY_MODELS: gpt-5.6-luna
           VISION_GATEWAY_MODELS: gpt-5.6-luna
           REASONING_GATEWAY_MODELS: gpt-5.6-luna
+      - name: Validate generated PWA release
+        run: npm run validate:pwa
       - name: Cross-browser and PWA end-to-end tests
         run: npm run test:e2e
         env:
