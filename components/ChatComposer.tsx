@@ -99,7 +99,7 @@ export function ChatComposer({
               <ImagePlus size={19} />
             </button>
             <span id="composer-help" className="composer-hint">
-              {model?.vision ? "Images supported." : "Text model."} Enter sends; Shift+Enter adds a line.
+              {model?.vision ? "Images supported · Enter to send" : "Text model · Enter to send"}; Shift+Enter adds a line.
             </span>
           </div>
           {generating ? (
