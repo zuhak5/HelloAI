@@ -1,6 +1,12 @@
 import type { MetadataRoute } from "next";
 
-export default function manifest(): MetadataRoute.Manifest {
+type HelloAiManifest = MetadataRoute.Manifest & {
+  display_override: string[];
+  prefer_related_applications: false;
+  launch_handler: { client_mode: "navigate-existing" };
+};
+
+export default function manifest(): HelloAiManifest {
   return {
     id: "/",
     name: "HelloAI — Local AI Chat",
@@ -11,6 +17,9 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
+    display_override: ["standalone"],
+    prefer_related_applications: false,
+    launch_handler: { client_mode: "navigate-existing" },
     orientation: "any",
     background_color: "#0b0d12",
     theme_color: "#0b0d12",

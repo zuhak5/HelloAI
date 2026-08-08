@@ -15,6 +15,19 @@ const themeInitializer = `(() => {
   } catch {}
 })();`;
 
+const installPromptBootstrap = `(() => {
+  const promptKey = "__helloaiInstallPrompt";
+  window[promptKey] = window[promptKey] || null;
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    window[promptKey] = event;
+    window.dispatchEvent(new Event("helloai:beforeinstallprompt"));
+  });
+  window.addEventListener("appinstalled", () => {
+    window[promptKey] = null;
+  });
+})();`;
+
 export const metadata: Metadata = {
   title: { default: "HelloAI", template: "%s · HelloAI" },
   description: "A local-first, no-login AI chat PWA powered by the HomePilot gateway.",
@@ -48,7 +61,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeInitializer }} /></head>
+      <head>
+        <script id="helloai-install-bootstrap" dangerouslySetInnerHTML={{ __html: installPromptBootstrap }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
+      </head>
       <body><PwaProvider>{children}</PwaProvider></body>
     </html>
   );

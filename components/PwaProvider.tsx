@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { detectPwaClient, isStandaloneDisplay } from "@/lib/pwa";
+import { detectPwaClient, isAndroidChromeWebApkTarget, isStandaloneDisplay } from "@/lib/pwa";
 import type { PwaBrowser, PwaPlatform } from "@/lib/pwa";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -10,8 +10,15 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform?: string }>;
 }
 
+declare global {
+  interface Window {
+    __helloaiInstallPrompt?: BeforeInstallPromptEvent | null;
+  }
+}
+
 type RegistrationState = "checking" | "ready" | "development" | "unsupported" | "insecure" | "error";
-export type InstallOutcome = "accepted" | "dismissed" | "manual" | "installed" | "error";
+export type InstallOutcome = "accepted" | "dismissed" | "manual" | "not-ready" | "installed" | "error";
+export type NativeInstallState = "installed" | "ready" | "waiting-chrome" | "manual";
 
 interface PwaContextValue {
   installed: boolean;
@@ -21,6 +28,8 @@ interface PwaContextValue {
   updateAvailable: boolean;
   platform: PwaPlatform;
   browser: PwaBrowser;
+  androidWebApkTarget: boolean;
+  nativeInstallState: NativeInstallState;
   install: () => Promise<InstallOutcome>;
   applyUpdate: () => void;
 }
@@ -42,33 +51,46 @@ export function PwaProvider({ children }: { children: ReactNode }) {
 
   const client = useMemo(() => {
     if (typeof navigator === "undefined") return { platform: "other" as const, browser: "other" as const };
+    const navigatorWithBrave = navigator as Navigator & { brave?: unknown };
     return detectPwaClient({
       userAgent: navigator.userAgent,
       platform: navigator.platform,
       maxTouchPoints: navigator.maxTouchPoints,
+      isBrave: Boolean(navigatorWithBrave.brave),
     });
   }, []);
+  const androidWebApkTarget = isAndroidChromeWebApkTarget(client);
 
   useEffect(() => {
     const displayMode = window.matchMedia("(display-mode: standalone)");
     const updateInstalledState = () => setInstalled(readStandaloneState());
-    const onBeforeInstallPrompt = (event: Event) => {
+    const capturePrompt = (event: BeforeInstallPromptEvent) => {
       event.preventDefault();
-      setPromptEvent(event as BeforeInstallPromptEvent);
+      window.__helloaiInstallPrompt = event;
+      setPromptEvent(event);
     };
+    const consumeBootstrapPrompt = () => {
+      const event = window.__helloaiInstallPrompt;
+      if (event) setPromptEvent(event);
+    };
+    const onBeforeInstallPrompt = (event: Event) => capturePrompt(event as BeforeInstallPromptEvent);
     const onAppInstalled = () => {
       setInstalled(true);
       setPromptEvent(null);
+      window.__helloaiInstallPrompt = null;
     };
 
     updateInstalledState();
+    consumeBootstrapPrompt();
     displayMode.addEventListener?.("change", updateInstalledState);
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("helloai:beforeinstallprompt", consumeBootstrapPrompt);
     window.addEventListener("appinstalled", onAppInstalled);
 
     return () => {
       displayMode.removeEventListener?.("change", updateInstalledState);
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("helloai:beforeinstallprompt", consumeBootstrapPrompt);
       window.removeEventListener("appinstalled", onAppInstalled);
     };
   }, []);
@@ -123,12 +145,10 @@ export function PwaProvider({ children }: { children: ReactNode }) {
 
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    if (document.readyState === "complete") register().catch(() => undefined);
-    else window.addEventListener("load", register, { once: true });
+    register().catch(() => undefined);
 
     return () => {
       disposed = true;
-      window.removeEventListener("load", register);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
     };
@@ -136,17 +156,19 @@ export function PwaProvider({ children }: { children: ReactNode }) {
 
   const install = useCallback(async (): Promise<InstallOutcome> => {
     if (installed) return "installed";
-    if (!promptEvent) return "manual";
+    if (!promptEvent) return androidWebApkTarget ? "not-ready" : "manual";
     try {
       await promptEvent.prompt();
       const choice = await promptEvent.userChoice;
       setPromptEvent(null);
+      window.__helloaiInstallPrompt = null;
       return choice.outcome;
     } catch {
       setPromptEvent(null);
+      window.__helloaiInstallPrompt = null;
       return "error";
     }
-  }, [installed, promptEvent]);
+  }, [androidWebApkTarget, installed, promptEvent]);
 
   const applyUpdate = useCallback(() => {
     const waiting = registrationRef.current?.waiting;
@@ -156,6 +178,14 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     waiting.postMessage("SKIP_WAITING");
   }, []);
 
+  const nativeInstallState: NativeInstallState = installed
+    ? "installed"
+    : promptEvent
+      ? "ready"
+      : androidWebApkTarget
+        ? "waiting-chrome"
+        : "manual";
+
   const value = useMemo<PwaContextValue>(() => ({
     installed,
     canPrompt: Boolean(promptEvent) && !installed,
@@ -164,9 +194,11 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     updateAvailable,
     platform: client.platform,
     browser: client.browser,
+    androidWebApkTarget,
+    nativeInstallState,
     install,
     applyUpdate,
-  }), [applyUpdate, client.browser, client.platform, install, installed, promptEvent, registrationState, updateAvailable]);
+  }), [androidWebApkTarget, applyUpdate, client.browser, client.platform, install, installed, nativeInstallState, promptEvent, registrationState, updateAvailable]);
 
   return <PwaContext.Provider value={value}>{children}</PwaContext.Provider>;
 }
