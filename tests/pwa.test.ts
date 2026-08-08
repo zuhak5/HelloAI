@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import manifest from "@/app/manifest";
-import { detectPwaClient, getPwaInstallInstructions, isStandaloneDisplay } from "@/lib/pwa";
+import { detectPwaClient, getPwaInstallInstructions, isAndroidChromeWebApkTarget, isStandaloneDisplay } from "@/lib/pwa";
 
 describe("PWA manifest", () => {
   it("contains the required standalone installability metadata", () => {
@@ -9,6 +9,8 @@ describe("PWA manifest", () => {
     expect(value.start_url).toBe("/");
     expect(value.scope).toBe("/");
     expect(value.display).toBe("standalone");
+    expect(value.display_override).toContain("standalone");
+    expect(value.prefer_related_applications).toBe(false);
     expect(value.name).toBeTruthy();
     expect(value.short_name).toBeTruthy();
     expect(value.icons).toEqual(expect.arrayContaining([
@@ -28,6 +30,30 @@ describe("PWA client guidance", () => {
     });
     expect(client).toEqual({ platform: "ios", browser: "safari" });
     expect(getPwaInstallInstructions(client).join(" ")).toMatch(/Add to Home Screen/);
+  });
+
+  it("identifies Google Chrome on Android as the WebAPK target", () => {
+    const client = detectPwaClient({
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36",
+      platform: "Linux armv8l",
+    });
+    expect(client).toEqual({ platform: "android", browser: "chrome" });
+    expect(isAndroidChromeWebApkTarget(client)).toBe(true);
+    expect(getPwaInstallInstructions(client).join(" ")).toMatch(/Do not choose Create shortcut/);
+  });
+
+  it("does not mislabel Android Edge or Brave as the Chrome WebAPK target", () => {
+    const edge = detectPwaClient({
+      userAgent: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/148.0.0.0 Mobile Safari/537.36 EdgA/148.0.0.0",
+    });
+    const brave = detectPwaClient({
+      userAgent: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/148.0.0.0 Mobile Safari/537.36",
+      isBrave: true,
+    });
+    expect(edge.browser).toBe("edge");
+    expect(brave.browser).toBe("brave");
+    expect(isAndroidChromeWebApkTarget(edge)).toBe(false);
+    expect(isAndroidChromeWebApkTarget(brave)).toBe(false);
   });
 
   it("provides an explicit Firefox desktop limitation", () => {

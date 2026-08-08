@@ -54,7 +54,7 @@ const nextConfig: NextConfig = {
         source: "/manifest.webmanifest",
         headers: [
           { key: "Content-Type", value: "application/manifest+json; charset=utf-8" },
-          { key: "Cache-Control", value: "public, max-age=3600, must-revalidate" },
+          { key: "Cache-Control", value: "no-cache, max-age=0, must-revalidate" },
         ],
       },
       ...["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"].map((source) => ({

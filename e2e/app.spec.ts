@@ -90,18 +90,25 @@ test("supports keyboard search and a narrow mobile layout without horizontal ove
   await expect(page.getByLabel("Message HelloAI")).toBeVisible();
 });
 
-test("provides install UI even when the browser does not expose a native prompt", async ({ page }) => {
+test("provides install UI even when the browser does not expose a native prompt", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open conversation sidebar" }).click();
   await page.getByRole("button", { name: "Install app" }).click();
-  const dialog = page.getByRole("dialog", { name: "Install HelloAI" });
+  const androidChrome = testInfo.project.name === "mobile-chrome";
+  const dialog = page.getByRole("dialog", { name: androidChrome ? "Install as an Android app" : "Install HelloAI" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/Manual installation available|Ready to install/)).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "Install on this browser" })).toBeVisible();
+  if (androidChrome) {
+    await expect(dialog.getByText("Waiting for Chrome app install")).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "WebAPK installation requirements" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Install Android app" })).toBeHidden();
+  } else {
+    await expect(dialog.getByText(/Manual installation available|Ready to install/)).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Install on this browser" })).toBeVisible();
+  }
 });
 
-test("uses a captured beforeinstallprompt event from the custom install action", async ({ page }) => {
+test("uses a captured beforeinstallprompt event from the custom install action", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
   await expect(page.getByLabel("Message HelloAI")).toBeEditable();
@@ -115,7 +122,7 @@ test("uses a captured beforeinstallprompt event from the custom install action",
     window.dispatchEvent(event);
   });
   await page.getByRole("button", { name: "Install HelloAI" }).click();
-  await page.getByRole("button", { name: "Install now" }).click();
+  await page.getByRole("button", { name: testInfo.project.name === "mobile-chrome" ? "Install Android app" : "Install now" }).click();
   await expect.poll(() => page.evaluate(() => (window as Window & { __installPromptOpened?: boolean }).__installPromptOpened)).toBe(true);
 });
 

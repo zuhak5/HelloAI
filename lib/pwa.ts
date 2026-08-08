@@ -1,5 +1,5 @@
 export type PwaPlatform = "ios" | "android" | "macos" | "windows" | "linux" | "other";
-export type PwaBrowser = "safari" | "chromium" | "firefox" | "other";
+export type PwaBrowser = "safari" | "chrome" | "edge" | "opera" | "samsung" | "brave" | "chromium" | "firefox" | "other";
 
 export interface PwaClientInfo {
   platform: PwaPlatform;
@@ -10,9 +10,10 @@ export interface PwaDetectionInput {
   userAgent: string;
   platform?: string;
   maxTouchPoints?: number;
+  isBrave?: boolean;
 }
 
-export function detectPwaClient({ userAgent, platform = "", maxTouchPoints = 0 }: PwaDetectionInput): PwaClientInfo {
+export function detectPwaClient({ userAgent, platform = "", maxTouchPoints = 0, isBrave = false }: PwaDetectionInput): PwaClientInfo {
   const ua = userAgent.toLowerCase();
   const platformValue = platform.toLowerCase();
   const ipadDesktopMode = platformValue === "macintel" && maxTouchPoints > 1;
@@ -26,18 +27,47 @@ export function detectPwaClient({ userAgent, platform = "", maxTouchPoints = 0 }
 
   let browser: PwaBrowser = "other";
   if (/firefox|fxios/.test(ua)) browser = "firefox";
-  else if (/edg|chrome|chromium|crios|opr\//.test(ua)) browser = "chromium";
+  else if (/samsungbrowser/.test(ua)) browser = "samsung";
+  else if (/edga|edgios|edg\//.test(ua)) browser = "edge";
+  else if (/opr\//.test(ua)) browser = "opera";
+  else if (isBrave) browser = "brave";
+  else if (/chrome|crios/.test(ua)) browser = "chrome";
+  else if (/chromium/.test(ua)) browser = "chromium";
   else if (/safari/.test(ua) && !/android/.test(ua)) browser = "safari";
 
   return { platform: detectedPlatform, browser };
 }
 
-export function getPwaInstallInstructions({ platform, browser }: PwaClientInfo): string[] {
+export function isAndroidChromeWebApkTarget({ platform, browser }: PwaClientInfo): boolean {
+  return platform === "android" && browser === "chrome";
+}
+
+export function getPwaInstallInstructions(client: PwaClientInfo): string[] {
+  const { platform, browser } = client;
+
   if (platform === "ios") {
     return [
       "Open HelloAI in Safari.",
       "Tap the Share button in Safari's toolbar.",
       "Choose Add to Home Screen, then tap Add.",
+    ];
+  }
+
+  if (platform === "android" && browser === "chrome") {
+    return [
+      "Keep HelloAI open in Google Chrome for at least 30 seconds and tap the page at least once.",
+      "Wait until this dialog says Ready for Android app install, then use Install Android app.",
+      "Accept Chrome's native installation prompt. Do not choose Create shortcut.",
+      "If Chrome never offers app installation, confirm Google Play Services is enabled and Chrome is up to date.",
+    ];
+  }
+
+  if (platform === "android") {
+    return [
+      "Open this same HelloAI URL in Google Chrome.",
+      "Use HelloAI in Chrome until Chrome exposes its native app installation prompt.",
+      "Install only from Chrome's Install app flow; do not use Create shortcut.",
+      "A WebAPK requires a supported browser/device minting service, normally Google Chrome with Google Play Services.",
     ];
   }
 
@@ -49,19 +79,11 @@ export function getPwaInstallInstructions({ platform, browser }: PwaClientInfo):
     ];
   }
 
-  if (browser === "chromium") {
+  if (["chrome", "edge", "opera", "brave", "chromium"].includes(browser)) {
     return [
       "Use the Install now button when it is available.",
-      "You can also open the browser menu and choose Install HelloAI or Apps → Install this site as an app.",
-      "Confirm the installation dialog.",
-    ];
-  }
-
-  if (platform === "android" && browser === "firefox") {
-    return [
-      "Open the Firefox menu.",
-      "Choose Install or Add to Home screen.",
-      "Confirm the installation.",
+      "You can also open the browser menu and choose Install HelloAI or Install this site as an app.",
+      "Confirm the browser installation dialog.",
     ];
   }
 
@@ -75,7 +97,7 @@ export function getPwaInstallInstructions({ platform, browser }: PwaClientInfo):
 
   return [
     "Open your browser's main menu.",
-    "Look for Install app, Add to Home screen, or Create shortcut.",
+    "Look for Install app or Install this site as an app.",
     "Use Chrome, Edge, or Safari if your browser does not offer an installation action.",
   ];
 }
