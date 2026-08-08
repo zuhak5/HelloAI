@@ -1,6 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import { PwaProvider } from "@/components/PwaProvider";
 import "./globals.css";
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+  display: "swap",
+});
 
 const themeInitializer = `(() => {
   try {
@@ -53,14 +66,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f4f6fa" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b0d12" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f8f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1210" },
   ],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable}`}>
       <head>
         <script id="helloai-install-bootstrap" dangerouslySetInnerHTML={{ __html: installPromptBootstrap }} />
         <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
