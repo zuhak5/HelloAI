@@ -44,6 +44,13 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: "/pwa-build.json",
+        headers: [
+          { key: "Content-Type", value: "application/json; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+      {
         source: "/manifest.webmanifest",
         headers: [
           { key: "Content-Type", value: "application/manifest+json; charset=utf-8" },
@@ -52,7 +59,7 @@ const nextConfig: NextConfig = {
       },
       ...["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"].map((source) => ({
         source,
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600, must-revalidate" }],
       })),
       { source: "/api/(.*)", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] },
     ];

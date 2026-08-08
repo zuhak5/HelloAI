@@ -9,12 +9,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node tool/build_pwa.mjs && node tool/validate_pwa.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "validate:pwa": "node tool/validate_pwa.mjs",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

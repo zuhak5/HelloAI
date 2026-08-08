@@ -10,3 +10,7 @@ test-results/
 .DS_Store
 *.log
 .vercel/
+
+# Generated from the production Next.js build by tool/build_pwa.mjs.
+public/sw.js
+public/pwa-build.json
