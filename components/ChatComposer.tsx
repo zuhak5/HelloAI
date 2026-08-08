@@ -22,7 +22,6 @@ interface ChatComposerProps {
   onStop: () => void;
 }
 
-
 export function ChatComposer({
   value,
   pendingImages,
@@ -78,7 +77,7 @@ export function ChatComposer({
             if (files.length) onAddImages(files);
           }}
           onKeyDown={onKeyDown}
-          placeholder={initializing ? "Loading your local workspace…" : online ? "Message HelloAI…" : "Offline — drafts are saved locally"}
+          placeholder={initializing ? "Loading your local workspace…" : online ? "Message HelloAI…" : "Offline - drafts are saved locally"}
           aria-label="Message HelloAI"
           aria-describedby="composer-help composer-disclaimer"
           aria-keyshortcuts="Enter"
@@ -100,7 +99,7 @@ export function ChatComposer({
               <ImagePlus size={19} />
             </button>
             <span id="composer-help" className="composer-hint">
-              {model?.vision ? "Images supported" : "Text model"} · Enter to send · Shift+Enter for a new line
+              {model?.vision ? "Images supported." : "Text model."} Enter sends; Shift+Enter adds a line.
             </span>
           </div>
           {generating ? (

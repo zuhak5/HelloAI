@@ -9,7 +9,7 @@ type HelloAiManifest = MetadataRoute.Manifest & {
 export default function manifest(): HelloAiManifest {
   return {
     id: "/",
-    name: "HelloAI — Local AI Chat",
+    name: "HelloAI - Local AI Chat",
     short_name: "HelloAI",
     description: "Open and chat with AI. Conversations and images stay in your browser.",
     lang: "en",
@@ -21,8 +21,8 @@ export default function manifest(): HelloAiManifest {
     prefer_related_applications: false,
     launch_handler: { client_mode: "navigate-existing" },
     orientation: "any",
-    background_color: "#0b0d12",
-    theme_color: "#0b0d12",
+    background_color: "#0d1210",
+    theme_color: "#0d1210",
     categories: ["productivity", "utilities"],
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
